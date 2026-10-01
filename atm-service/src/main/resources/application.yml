@@ -1,0 +1,16 @@
+server:
+  port: ${ATM_SERVICE_PORT:8085}
+
+spring:
+  application:
+    name: atm-service
+  http:
+    client:
+      connect-timeout: 2s
+      read-timeout: 15s
+
+atm:
+  # Идентификатор устройства печатается на чеках
+  terminal-id: ${ATM_TERMINAL_ID:ATM-0001}
+  # Процессинг банка — сервис кредитов, к счёту которого привязана карта
+  bank-url: ${CREDIT_SERVICE_URL:http://localhost:8084}

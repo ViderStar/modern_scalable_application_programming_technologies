@@ -25,6 +25,7 @@
         <module>account-service</module>
         <module>deposit-service</module>
         <module>credit-service</module>
+        <module>atm-service</module>
     </modules>
 
     <properties>
