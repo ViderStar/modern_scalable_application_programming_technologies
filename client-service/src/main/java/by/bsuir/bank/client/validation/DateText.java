@@ -16,7 +16,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DateText {
 
-    String message() default "Укажите существующую дату ДД.ММ.ГГГГ не позднее сегодняшней";
+    String message() default "{validation.date}";
 
     Class<?>[] groups() default {};
 

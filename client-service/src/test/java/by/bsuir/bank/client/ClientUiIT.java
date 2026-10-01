@@ -245,6 +245,33 @@ class ClientUiIT {
         assertThat(count("last_name = 'Сидоров'")).isZero();
     }
 
+    @Test
+    @DisplayName("Переключение языка интерфейса: русский, английский, белорусский")
+    void languageSwitch() {
+        try {
+            driver.findElement(By.id("lang-en")).click();
+            wait.until(ExpectedConditions.textToBe(By.cssSelector("h1"), "Client list"));
+            assertThat(driver.getTitle()).isEqualTo("Clients — BankEt");
+            driver.findElement(By.id("btn-add")).click();
+            save();
+            assertThat(error("lastName")).isEqualTo("Required field");
+            assertThat(driver.findElement(By.cssSelector("label[for=f-lastName]")).getText()).startsWith("Last name");
+            assertThat(new Select(driver.findElement(By.id("f-residenceCityId"))).getOptions())
+                    .extracting(WebElement::getText).contains("Minsk", "Grodno");
+
+            // сообщение сервера тоже приходит на выбранном языке
+            fill(TestClients.with("passportNumber", "3141592"));
+            save();
+            assertThat(error("passportNumber")).isEqualTo("A client with this passport is already registered");
+
+            driver.findElement(By.id("lang-be")).click();
+            wait.until(ExpectedConditions.textToBe(By.cssSelector("h1"), "Спіс кліентаў"));
+            assertThat(driver.findElement(By.id("btn-add")).getText()).isEqualTo("Дадаць кліента");
+        } finally {
+            driver.manage().deleteCookieNamed("bank_lang");      // остальные тесты работают на русском
+        }
+    }
+
     // ---------- работа со страницей ----------
 
     private void fill(Map<String, Object> client) {

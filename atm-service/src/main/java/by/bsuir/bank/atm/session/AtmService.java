@@ -2,13 +2,17 @@ package by.bsuir.bank.atm.session;
 
 import by.bsuir.bank.atm.AtmProperties;
 import by.bsuir.bank.atm.bank.BankGateway;
+import by.bsuir.bank.atm.bank.DemoCard;
 import by.bsuir.bank.common.api.BankException;
+import by.bsuir.bank.common.i18n.Messages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,10 +42,19 @@ public class AtmService {
         return new SessionView(id, session.screen());
     }
 
+    /** Демо-карты банка для подсказки; если банк недоступен, подсказка просто не показывается. */
+    public List<DemoCard> demoCards() {
+        try {
+            return bank.demoCards();
+        } catch (RestClientException e) {
+            return List.of();
+        }
+    }
+
     public AtmSession get(String id) {
         AtmSession session = sessions.get(id);
         if (session == null) {
-            throw BankException.notFound("Сеанс банкомата не найден или истёк");
+            throw BankException.notFound(Messages.get("session.notFound"));
         }
         return session;
     }

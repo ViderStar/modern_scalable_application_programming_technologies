@@ -1,11 +1,14 @@
 $ ./mvnw -pl account-service,deposit-service -am verify
 
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.182 s -- in by.bsuir.bank.common.i18n.MessagesTest
 Tests run:  7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.066 s -- in by.bsuir.bank.account.AccountNumbersTest
-Tests run:  6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.338 s -- in by.bsuir.bank.account.BankDayIT
-Tests run:  8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.349 s -- in by.bsuir.bank.account.LedgerServiceIT
-Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.064 s -- in by.bsuir.bank.deposit.InterestCalculatorTest
-Tests run:  7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.090 s -- in by.bsuir.bank.deposit.DepositFlowIT
-Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.565 s -- in by.bsuir.bank.deposit.DepositApiIT
+Tests run:  4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.362 s -- in by.bsuir.bank.account.LedgerLanguageIT
+Tests run:  6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.064 s -- in by.bsuir.bank.account.BankDayIT
+Tests run:  8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.348 s -- in by.bsuir.bank.account.LedgerServiceIT
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.063 s -- in by.bsuir.bank.deposit.InterestCalculatorTest
+Tests run:  3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.101 s -- in by.bsuir.bank.deposit.DepositLanguageIT
+Tests run:  7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.344 s -- in by.bsuir.bank.deposit.DepositFlowIT
+Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.469 s -- in by.bsuir.bank.deposit.DepositApiIT
 
-Tests run: 69, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 86, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS

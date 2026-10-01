@@ -1,6 +1,6 @@
 /* Web-клиент сервиса кредитов: список договоров, форма договора с графиком платежей, карточка договора. */
 
-const REQUIRED = 'Обязательное поле';
+const t = Bank.t;
 
 /* Дата окончания: как LocalDate.plusMonths — день месяца сохраняется либо прижимается к концу месяца. */
 function addMonths(iso, months) {
@@ -17,8 +17,9 @@ const scheduleTable = {
   template: `
     <table id="schedule">
       <thead>
-        <tr><th>№</th><th>Дата платежа</th><th class="num">Основной долг</th><th class="num">Проценты</th>
-            <th class="num">Платёж</th><th class="num">Остаток долга</th><th>Оплачен</th></tr>
+        <tr><th>№</th><th>{{ t('schedule.dueDate') }}</th><th class="num">{{ t('schedule.principal') }}</th>
+            <th class="num">{{ t('schedule.interest') }}</th><th class="num">{{ t('schedule.payment') }}</th>
+            <th class="num">{{ t('schedule.balance') }}</th><th>{{ t('schedule.paid') }}</th></tr>
       </thead>
       <tbody>
         <tr v-for="row in schedule.rows" :key="row.seq">
@@ -32,13 +33,13 @@ const scheduleTable = {
         </tr>
       </tbody>
       <tfoot>
-        <tr><td colspan="3">Итого, {{ currency }}</td><td class="num">{{ money(schedule.totalInterest) }}</td>
+        <tr><td colspan="3">{{ t('common.total', currency) }}</td><td class="num">{{ money(schedule.totalInterest) }}</td>
             <td class="num">{{ money(schedule.totalPayment) }}</td><td colspan="2"></td></tr>
       </tfoot>
     </table>`,
 };
 
-const app = Vue.createApp({
+const app = Bank.createApp({
   data() {
     return {
       view: 'list',            // list | form | details
@@ -110,25 +111,25 @@ const app = Vue.createApp({
     validate() {
       const errors = {};
       const form = this.form;
-      if (!form.clientId) errors.clientId = REQUIRED;
-      if (!form.productId) errors.productId = REQUIRED;
-      if (!form.number) errors.number = REQUIRED;
-      else if (!/^К-\d{6}$/.test(form.number)) errors.number = 'Формат номера договора: К-000001';
+      if (!form.clientId) errors.clientId = t('common.required');
+      if (!form.productId) errors.productId = t('common.required');
+      if (!form.number) errors.number = t('common.required');
+      else if (!/^К-\d{6}$/.test(form.number)) errors.number = t('credits.numberFormat');
       const amount = String(form.amount).trim().replace(',', '.');
-      if (!amount) errors.amount = REQUIRED;
-      else if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) errors.amount = 'Денежная сумма: только цифры и не более 2 знаков после запятой';
+      if (!amount) errors.amount = t('common.required');
+      else if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) errors.amount = t('contract.moneyFormat');
       else if (this.product && (Number(amount) < this.product.minAmount || Number(amount) > this.product.maxAmount))
-        errors.amount = 'Сумма кредита по программе: от ' + Bank.money(this.product.minAmount) + ' до ' + Bank.money(this.product.maxAmount) + ' ' + this.product.currency;
+        errors.amount = t('credits.amountRange', Bank.money(this.product.minAmount), Bank.money(this.product.maxAmount), this.product.currency);
       const term = String(form.termMonths).trim();
-      if (!term) errors.termMonths = REQUIRED;
-      else if (!/^\d{1,3}$/.test(term)) errors.termMonths = 'Срок — целое число месяцев';
+      if (!term) errors.termMonths = t('common.required');
+      else if (!/^\d{1,3}$/.test(term)) errors.termMonths = t('contract.termInteger');
       else if (this.product && (Number(term) < this.product.minTermMonths || Number(term) > this.product.maxTermMonths))
-        errors.termMonths = 'Срок по программе: от ' + this.product.minTermMonths + ' до ' + this.product.maxTermMonths + ' мес.';
+        errors.termMonths = t('contract.termRange', this.product.minTermMonths, this.product.maxTermMonths);
       return errors;
     },
     checkForm() {
       this.errors = this.validate();
-      this.formError = Object.keys(this.errors).length ? 'Форма заполнена с ошибками — исправьте отмеченные поля' : '';
+      this.formError = Object.keys(this.errors).length ? t('common.formErrors') : '';
       return !this.formError;
     },
     async calculate() {
@@ -160,7 +161,7 @@ const app = Vue.createApp({
         await this.reload();
         await this.openDetails(issued.contract.id);
         this.envelope = issued.card;
-        this.notice = 'Договор ' + issued.contract.number + ' заключён, кредит зачислен на счёт ' + issued.contract.mainAccount;
+        this.notice = t('credits.opened', issued.contract.number, issued.contract.mainAccount);
       } catch (e) {
         this.errors = e.fields;
         this.formError = e.message;
@@ -185,13 +186,13 @@ const app = Vue.createApp({
       const amount = String(this.cashAmount).trim().replace(',', '.');
       this.error = '';
       if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
-        this.error = 'Укажите сумму выдачи: положительное число, не более 2 знаков после запятой';
+        this.error = t('credits.cashInvalid');
         return;
       }
       try {
         await Bank.api('POST', '/api/credits/' + contract.id + '/cash', { amount: Number(amount) });
         await this.openDetails(contract.id);
-        this.notice = 'Через кассу выдано ' + Bank.money(amount) + ' ' + contract.currency;
+        this.notice = t('credits.cashDone', Bank.money(amount), contract.currency);
       } catch (e) {
         this.error = e.message;
       }
@@ -234,8 +235,8 @@ const app = Vue.createApp({
     <main>
       <div class="toolbar">
         <div>
-          <h1>Кредитные договоры</h1>
-          <p class="subtitle">Кредиты физических лиц: заключение договора, график платежей, погашение</p>
+          <h1>{{ t('credits.title') }}</h1>
+          <p class="subtitle">{{ t('credits.subtitle') }}</p>
         </div>
         <bank-day @changed="dayClosed" @failed="e => error = e.message"></bank-day>
       </div>
@@ -243,27 +244,30 @@ const app = Vue.createApp({
       <div v-if="error" id="error" class="alert error">{{ error }}</div>
       <div v-if="notice" id="notice" class="alert success">{{ notice }}</div>
       <div v-if="envelope" id="envelope" class="alert info">
-        <b>ПИН-конверт.</b> Карта <span class="mono" id="card-number">{{ cardNumber(envelope.cardNumber) }}</span>,
-        PIN-код <b id="card-pin" class="mono">{{ envelope.pin }}</b>.
-        PIN-код показывается один раз и в базе не хранится — передайте его клиенту.
+        <b>{{ t('credits.envelopeTitle') }}</b> {{ t('credits.envelopeCard') }}
+        <span class="mono" id="card-number">{{ cardNumber(envelope.cardNumber) }}</span>,
+        {{ t('credits.envelopePin') }} <b id="card-pin" class="mono">{{ envelope.pin }}</b>.
+        {{ t('credits.envelopeNote') }}
       </div>
       <div v-if="events.length" id="events" class="alert info">
-        <b>Протокол закрытия дня</b>
+        <b>{{ t('events.title') }}</b>
         <div v-for="(event, i) in events.slice(-8)" :key="i">{{ event }}</div>
-        <div v-if="events.length > 8" class="muted">… всего записей: {{ events.length }}</div>
+        <div v-if="events.length > 8" class="muted">{{ t('events.more', events.length) }}</div>
       </div>
 
       <section v-if="view === 'list'">
         <div class="toolbar">
-          <span class="muted">Договоров: {{ credits.length }}</span>
-          <button id="btn-add" class="primary" @click="openForm">Заключить договор</button>
+          <span class="muted">{{ t('contract.count', credits.length) }}</span>
+          <button id="btn-add" class="primary" @click="openForm">{{ t('contract.conclude') }}</button>
         </div>
         <div class="card">
           <table id="credits">
             <thead>
               <tr>
-                <th>Договор</th><th>Клиент</th><th>Вид кредита</th><th class="num">Сумма</th><th class="num">Ставка</th>
-                <th>Начало</th><th>Окончание</th><th class="num">Остаток долга</th><th class="num">Уплачено процентов</th><th>Статус</th>
+                <th>{{ t('table.contract') }}</th><th>{{ t('contract.client') }}</th><th>{{ t('credits.kind') }}</th>
+                <th class="num">{{ t('contract.sum') }}</th><th class="num">{{ t('contract.rate') }}</th>
+                <th>{{ t('contract.start') }}</th><th>{{ t('contract.end') }}</th><th class="num">{{ t('credits.debt') }}</th>
+                <th class="num">{{ t('credits.interestPaid') }}</th><th>{{ t('contract.status') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -277,134 +281,135 @@ const app = Vue.createApp({
                 <td>{{ date(c.endDate) }}</td>
                 <td class="num">{{ money(c.debt) }}</td>
                 <td class="num">{{ money(c.interestPaid) }}</td>
-                <td><span class="badge" :class="c.status === 'ACTIVE' ? 'ok' : 'off'">{{ c.status === 'ACTIVE' ? 'Действует' : 'Погашен' }}</span></td>
+                <td><span class="badge" :class="c.status === 'ACTIVE' ? 'ok' : 'off'">{{ c.status === 'ACTIVE' ? t('contract.active') : t('credits.repaid') }}</span></td>
               </tr>
             </tbody>
           </table>
-          <div v-if="!credits.length" class="empty">Договоров пока нет</div>
+          <div v-if="!credits.length" class="empty">{{ t('contract.none') }}</div>
         </div>
       </section>
 
       <section v-if="view === 'form'">
-        <h2>Новый кредитный договор</h2>
+        <h2>{{ t('credits.new') }}</h2>
         <div v-if="formError" id="form-alert" class="alert error">{{ formError }}</div>
         <form class="card" novalidate @submit.prevent="save">
           <div class="form-grid">
             <div class="field wide" :class="{ invalid: errors.clientId }">
-              <label for="f-clientId">Клиент <span class="req">*</span></label>
+              <label for="f-clientId">{{ t('contract.client') }} <span class="req">*</span></label>
               <select id="f-clientId" v-model="form.clientId">
-                <option :value="null">— выберите клиента —</option>
+                <option :value="null">{{ t('contract.chooseClient') }}</option>
                 <option v-for="c in clients" :key="c.id" :value="c.id">
-                  {{ c.fullName }} (паспорт {{ c.passportSeries }} {{ c.passportNumber }})
+                  {{ c.fullName }} ({{ t('contract.passport') }} {{ c.passportSeries }} {{ c.passportNumber }})
                 </option>
               </select>
               <div v-if="errors.clientId" class="error" id="e-clientId">{{ errors.clientId }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.number }">
-              <label for="f-number">Номер договора <span class="req">*</span></label>
+              <label for="f-number">{{ t('contract.number') }} <span class="req">*</span></label>
               <input id="f-number" type="text" v-model="form.number" v-mask="'К-######'" placeholder="К-000001">
               <div v-if="errors.number" class="error" id="e-number">{{ errors.number }}</div>
             </div>
 
             <div class="field">
-              <label for="f-currency">Валюта <span class="req">*</span></label>
+              <label for="f-currency">{{ t('contract.currency') }} <span class="req">*</span></label>
               <select id="f-currency" v-model="form.currency">
                 <option v-for="c in meta.currencies" :key="c.code" :value="c.code">{{ c.code }} — {{ c.name }}</option>
               </select>
             </div>
             <div class="field wide" :class="{ invalid: errors.productId }">
-              <label for="f-productId">Вид кредита <span class="req">*</span></label>
+              <label for="f-productId">{{ t('credits.kind') }} <span class="req">*</span></label>
               <select id="f-productId" v-model="form.productId">
-                <option :value="null">{{ availableProducts.length ? '— выберите программу —' : '— в этой валюте кредиты не выдаются —' }}</option>
+                <option :value="null">{{ availableProducts.length ? t('contract.chooseProduct') : t('credits.noProducts') }}</option>
                 <option v-for="p in availableProducts" :key="p.id" :value="p.id">
-                  «{{ p.name }}» — {{ p.kindTitle.toLowerCase() }}, {{ p.rate }} % годовых
+                  {{ t('credits.option', p.name, p.kindTitle.toLowerCase(), p.rate) }}
                 </option>
               </select>
               <div v-if="errors.productId" class="error" id="e-productId">{{ errors.productId }}</div>
-              <div v-else-if="product" class="hint">{{ product.description }}. Сумма {{ money(product.minAmount) }}–{{ money(product.maxAmount) }} {{ product.currency }},
-                срок {{ product.minTermMonths }}–{{ product.maxTermMonths }} мес.</div>
+              <div v-else-if="product" class="hint">{{ t('credits.hint', product.description, money(product.minAmount),
+                money(product.maxAmount), product.currency, product.minTermMonths, product.maxTermMonths) }}</div>
             </div>
 
             <div class="field" :class="{ invalid: errors.amount }">
-              <label for="f-amount">Сумма кредита, {{ form.currency }} <span class="req">*</span></label>
+              <label for="f-amount">{{ t('credits.amount', form.currency) }} <span class="req">*</span></label>
               <input id="f-amount" type="text" v-model="form.amount" placeholder="0.00">
               <div v-if="errors.amount" class="error" id="e-amount">{{ errors.amount }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.termMonths }">
-              <label for="f-termMonths">Срок договора, мес. <span class="req">*</span></label>
+              <label for="f-termMonths">{{ t('contract.term') }} <span class="req">*</span></label>
               <input id="f-termMonths" type="text" v-model="form.termMonths" v-mask="'###'">
               <div v-if="errors.termMonths" class="error" id="e-termMonths">{{ errors.termMonths }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.rate }">
-              <label for="f-rate">Процент по кредиту, % годовых</label>
+              <label for="f-rate">{{ t('credits.rate') }}</label>
               <input id="f-rate" type="text" :value="product ? product.rate : ''" readonly>
               <div v-if="errors.rate" class="error" id="e-rate">{{ errors.rate }}</div>
             </div>
 
             <div class="field" :class="{ invalid: errors.startDate }">
-              <label for="f-startDate">Дата начала</label>
+              <label for="f-startDate">{{ t('contract.startDate') }}</label>
               <input id="f-startDate" type="text" :value="date(meta.bankDate)" readonly>
               <div v-if="errors.startDate" class="error" id="e-startDate">{{ errors.startDate }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.endDate }">
-              <label for="f-endDate">Дата окончания</label>
+              <label for="f-endDate">{{ t('contract.endDate') }}</label>
               <input id="f-endDate" type="text" :value="date(endDate)" readonly>
               <div v-if="errors.endDate" class="error" id="e-endDate">{{ errors.endDate }}</div>
             </div>
           </div>
           <div class="form-actions" style="margin-top: 18px">
-            <button id="btn-save" type="submit" class="primary" :disabled="saving">Заключить договор</button>
-            <button id="btn-calc" type="button" @click="calculate">Рассчитать график</button>
-            <button id="btn-cancel" type="button" @click="view = 'list'">Отмена</button>
+            <button id="btn-save" type="submit" class="primary" :disabled="saving">{{ t('contract.conclude') }}</button>
+            <button id="btn-calc" type="button" @click="calculate">{{ t('credits.calculate') }}</button>
+            <button id="btn-cancel" type="button" @click="view = 'list'">{{ t('common.cancel') }}</button>
           </div>
         </form>
         <div v-if="preview" class="card">
-          <h2>График платежей (предварительный расчёт)</h2>
+          <h2>{{ t('credits.preview') }}</h2>
           <schedule-table :schedule="preview" :currency="form.currency"></schedule-table>
         </div>
       </section>
 
       <section v-if="view === 'details' && details">
         <div class="toolbar">
-          <h2>Договор {{ details.contract.number }} · {{ details.contract.clientName }}</h2>
-          <button id="btn-back" @click="toList">К списку</button>
+          <h2>{{ t('credits.contract', details.contract.number, details.contract.clientName) }}</h2>
+          <button id="btn-back" @click="toList">{{ t('common.toList') }}</button>
         </div>
         <div class="card details">
-          <div><div class="label">Вид кредита</div><div class="value">«{{ details.contract.productName }}»</div><div class="muted">{{ details.contract.kindTitle }}</div></div>
-          <div><div class="label">Сумма кредита</div><div class="value">{{ money(details.contract.amount) }} {{ details.contract.currency }}</div></div>
-          <div><div class="label">Ставка</div><div class="value">{{ details.contract.rate }} % годовых</div></div>
-          <div><div class="label">Статус</div><div class="value">{{ details.contract.status === 'ACTIVE' ? 'Действует' : 'Погашен ' + date(details.contract.closedOn) }}</div></div>
-          <div><div class="label">Срок</div><div class="value">{{ details.contract.termMonths }} мес.</div></div>
-          <div><div class="label">Период</div><div class="value">{{ date(details.contract.startDate) }} — {{ date(details.contract.endDate) }}</div></div>
-          <div><div class="label">Остаток долга</div><div class="value">{{ money(details.contract.debt) }} {{ details.contract.currency }}</div></div>
-          <div><div class="label">Уплачено процентов</div><div class="value">{{ money(details.contract.interestPaid) }} {{ details.contract.currency }}</div></div>
+          <div><div class="label">{{ t('credits.kind') }}</div><div class="value">«{{ details.contract.productName }}»</div><div class="muted">{{ details.contract.kindTitle }}</div></div>
+          <div><div class="label">{{ t('credits.amountShort') }}</div><div class="value">{{ money(details.contract.amount) }} {{ details.contract.currency }}</div></div>
+          <div><div class="label">{{ t('contract.rate') }}</div><div class="value">{{ details.contract.rate }} {{ t('contract.perAnnum') }}</div></div>
+          <div><div class="label">{{ t('contract.status') }}</div><div class="value">{{ details.contract.status === 'ACTIVE' ? t('contract.active') : t('credits.repaidOn', date(details.contract.closedOn)) }}</div></div>
+          <div><div class="label">{{ t('contract.termShort') }}</div><div class="value">{{ details.contract.termMonths }} {{ t('contract.months') }}</div></div>
+          <div><div class="label">{{ t('contract.period') }}</div><div class="value">{{ date(details.contract.startDate) }} — {{ date(details.contract.endDate) }}</div></div>
+          <div><div class="label">{{ t('credits.debt') }}</div><div class="value">{{ money(details.contract.debt) }} {{ details.contract.currency }}</div></div>
+          <div><div class="label">{{ t('credits.interestPaid') }}</div><div class="value">{{ money(details.contract.interestPaid) }} {{ details.contract.currency }}</div></div>
         </div>
 
         <div class="card">
-          <h2>Карта и выдача наличных</h2>
+          <h2>{{ t('credits.cardTitle') }}</h2>
           <div class="details" style="align-items: end">
-            <div><div class="label">Карта к кредитному счёту</div>
+            <div><div class="label">{{ t('credits.card') }}</div>
               <div class="value mono">{{ cardNumber(details.contract.cardNumber) }}</div>
-              <span class="badge" :class="details.contract.cardBlocked ? 'bad' : 'ok'">{{ details.contract.cardBlocked ? 'Заблокирована' : 'Активна' }}</span></div>
-            <div><div class="label">Доступно на счёте</div><div class="value" id="available">{{ mainAccount ? money(mainAccount.balance) : '—' }} {{ details.contract.currency }}</div></div>
-            <div class="field"><label for="cash-amount">Выдать через кассу, {{ details.contract.currency }}</label>
+              <span class="badge" :class="details.contract.cardBlocked ? 'bad' : 'ok'">{{ details.contract.cardBlocked ? t('credits.cardBlocked') : t('credits.cardActive') }}</span></div>
+            <div><div class="label">{{ t('credits.available') }}</div><div class="value" id="available">{{ mainAccount ? money(mainAccount.balance) : '—' }} {{ details.contract.currency }}</div></div>
+            <div class="field"><label for="cash-amount">{{ t('credits.cashLabel', details.contract.currency) }}</label>
               <input id="cash-amount" type="text" v-model="cashAmount" placeholder="0.00"></div>
             <div style="display: flex; gap: 8px">
-              <button id="btn-cash" class="primary" @click="cashOut">Выдать</button>
-              <button id="btn-pin" @click="reissuePin">Перевыпустить PIN</button>
+              <button id="btn-cash" class="primary" @click="cashOut">{{ t('credits.cash') }}</button>
+              <button id="btn-pin" @click="reissuePin">{{ t('credits.reissue') }}</button>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h2>График платежей</h2>
+          <h2>{{ t('credits.schedule') }}</h2>
           <schedule-table :schedule="details.schedule" :currency="details.contract.currency"></schedule-table>
         </div>
 
         <div class="card">
-          <h2>Счета договора</h2>
+          <h2>{{ t('contract.accounts') }}</h2>
           <table id="contract-accounts">
-            <thead><tr><th>Номер счёта</th><th>Код</th><th>Назначение</th><th>Активность</th><th class="num">Дебет</th><th class="num">Кредит</th><th class="num">Сальдо</th></tr></thead>
+            <thead><tr><th>{{ t('table.account') }}</th><th>{{ t('table.code') }}</th><th>{{ t('table.purpose') }}</th><th>{{ t('table.activity') }}</th>
+                <th class="num">{{ t('table.debit') }}</th><th class="num">{{ t('table.credit') }}</th><th class="num">{{ t('table.balance') }}</th></tr></thead>
             <tbody>
               <tr v-for="a in details.accounts" :key="a.number">
                 <td class="mono">{{ a.number }}</td>
@@ -420,9 +425,10 @@ const app = Vue.createApp({
         </div>
 
         <div class="card">
-          <h2>Проводки по договору</h2>
+          <h2>{{ t('contract.postings') }}</h2>
           <table id="contract-operations">
-            <thead><tr><th>Дата</th><th>Операция</th><th>Счёт</th><th class="num">Дебет</th><th class="num">Кредит</th></tr></thead>
+            <thead><tr><th>{{ t('table.date') }}</th><th>{{ t('table.operation') }}</th><th>{{ t('table.accountShort') }}</th>
+                <th class="num">{{ t('table.debit') }}</th><th class="num">{{ t('table.credit') }}</th></tr></thead>
             <tbody>
               <template v-for="op in details.operations" :key="op.id">
                 <tr v-for="(entry, i) in op.entries" :key="op.id + '-' + i">
@@ -438,10 +444,7 @@ const app = Vue.createApp({
         </div>
       </section>
     </main>`,
-});
+}, 'credits.page');
 
-app.component('bank-nav', Bank.navComponent);
-app.component('bank-day', Bank.dayComponent);
 app.component('schedule-table', scheduleTable);
-app.directive('mask', Bank.maskDirective);
 app.mount('#app');

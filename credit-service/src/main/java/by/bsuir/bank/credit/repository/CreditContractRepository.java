@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface CreditContractRepository extends JpaRepository<CreditContract, Long> {
 
@@ -16,6 +17,9 @@ public interface CreditContractRepository extends JpaRepository<CreditContract, 
     @Query("select c.id from CreditContract c where c.status = :status order by c.id")
     List<Long> findIdsByStatus(ContractStatus status);
 
-    @Query("select max(c.number) from CreditContract c")
-    String maxNumber();
+    /** Наибольший номер договора среди тех, что меньше границы (выше неё — номера демо-договоров). */
+    @Query("select max(c.number) from CreditContract c where c.number < :limit")
+    String maxNumberBelow(String limit);
+
+    Optional<CreditContract> findByNumber(String number);
 }

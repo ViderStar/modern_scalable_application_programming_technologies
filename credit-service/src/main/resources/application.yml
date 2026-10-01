@@ -27,3 +27,11 @@ bank:
     clients: ${CLIENT_SERVICE_URL:http://localhost:8081}
     accounts: ${ACCOUNT_SERVICE_URL:http://localhost:8082}
     deposits: ${DEPOSIT_SERVICE_URL:http://localhost:8083}
+  demo:
+    # Демо-карты для знакомства с банкоматом: после старта заключаются кредитные договоры,
+    # их картам назначаются PIN-коды из этого списка. Отключается BANK_DEMO_ENABLED=false
+    enabled: ${BANK_DEMO_ENABLED:true}
+    cards:
+      - { contract: К-900001, client-id: 1, product-id: 1, amount: 5000, term-months: 12, pin: "1111" }
+      - { contract: К-900002, client-id: 2, product-id: 2, amount: 3000, term-months: 12, pin: "2222" }
+      - { contract: К-900003, client-id: 5, product-id: 1, amount: 10000, term-months: 24, pin: "3333" }

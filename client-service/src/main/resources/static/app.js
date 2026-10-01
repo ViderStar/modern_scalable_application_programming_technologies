@@ -1,14 +1,14 @@
 /* Web-клиент модуля «Работа с клиентами»: форма «Список клиентов» и форма добавления/редактирования. */
 
-const REQUIRED = 'Обязательное поле';
+const t = Bank.t;
 const NAME = /^[А-Яа-яЁёA-Za-z]+(?:[-' ][А-Яа-яЁёA-Za-z]+)*$/;
-const letters = v => NAME.test(v) || 'Допустимы только буквы';
+const letters = v => NAME.test(v) || t('check.letters');
 
 function pastDate(v) {
   const date = Bank.parseDate(v);
-  if (!date) return 'Такой даты не существует, формат ДД.ММ.ГГГГ';
-  if (date > new Date()) return 'Дата не может быть в будущем';
-  if (date.getFullYear() < 1900) return 'Дата не может быть раньше 1900 года';
+  if (!date) return t('check.dateInvalid');
+  if (date > new Date()) return t('check.dateFuture');
+  if (date.getFullYear() < 1900) return t('check.dateOld');
   return true;
 }
 
@@ -16,50 +16,51 @@ function pastDate(v) {
  * Описание полей формы — единственное место, где заданы обязательность, маска ввода и проверка значения.
  * Первичная (клиентская) валидация: required — обязательность, mask — маска ввода, check — проверка формата.
  * Те же правила повторно проверяет сервис (ClientRequest + Masks).
+ * Подписи и сообщения берутся из словаря i18n.js по ключам field.<имя>, section.<раздел>, check.<правило>.
  */
 const SECTIONS = [
-  { title: 'Личные данные', fields: [
-    { name: 'lastName',   label: 'Фамилия',  required: true, max: 60, check: letters },
-    { name: 'firstName',  label: 'Имя',      required: true, max: 60, check: letters },
-    { name: 'middleName', label: 'Отчество', required: true, max: 60, check: letters },
-    { name: 'birthDate',  label: 'Дата рождения', required: true, mask: '##.##.####', placeholder: 'ДД.ММ.ГГГГ', check: pastDate },
-    { name: 'sex',        label: 'Пол', required: true, type: 'radio', options: [{ id: 'M', name: 'Мужской' }, { id: 'F', name: 'Женский' }] },
-    { name: 'birthPlace', label: 'Место рождения', required: true, max: 200 },
+  { title: 'personal', fields: [
+    { name: 'lastName', required: true, max: 60, check: letters },
+    { name: 'firstName', required: true, max: 60, check: letters },
+    { name: 'middleName', required: true, max: 60, check: letters },
+    { name: 'birthDate', required: true, mask: '##.##.####', placeholder: t('placeholder.date'), check: pastDate },
+    { name: 'sex', required: true, type: 'radio', options: [{ id: 'M', name: t('sex.M') }, { id: 'F', name: t('sex.F') }] },
+    { name: 'birthPlace', required: true, max: 200 },
   ]},
-  { title: 'Паспортные данные', fields: [
-    { name: 'passportSeries', label: 'Серия паспорта', required: true, mask: 'AA', placeholder: 'MP',
-      check: v => /^[A-Z]{2}$/.test(v) || 'Серия — две заглавные латинские буквы' },
-    { name: 'passportNumber', label: '№ паспорта', required: true, mask: '#######', placeholder: '1234567',
-      check: v => /^\d{7}$/.test(v) || 'Номер паспорта — семь цифр' },
-    { name: 'identificationNumber', label: 'Идентификационный номер', required: true, mask: '#######A###AA#', placeholder: '3140301A001PB5',
-      check: v => /^\d{7}[A-Z]\d{3}[A-Z]{2}\d$/.test(v) || 'Формат: 7 цифр, буква, 3 цифры, 2 буквы, цифра' },
-    { name: 'issuedBy',  label: 'Кем выдан', required: true, max: 200, wide: true },
-    { name: 'issueDate', label: 'Дата выдачи', required: true, mask: '##.##.####', placeholder: 'ДД.ММ.ГГГГ',
+  { title: 'passport', fields: [
+    { name: 'passportSeries', required: true, mask: 'AA', placeholder: 'MP',
+      check: v => /^[A-Z]{2}$/.test(v) || t('check.passportSeries') },
+    { name: 'passportNumber', required: true, mask: '#######', placeholder: '1234567',
+      check: v => /^\d{7}$/.test(v) || t('check.passportNumber') },
+    { name: 'identificationNumber', required: true, mask: '#######A###AA#', placeholder: '3140301A001PB5',
+      check: v => /^\d{7}[A-Z]\d{3}[A-Z]{2}\d$/.test(v) || t('check.identificationNumber') },
+    { name: 'issuedBy', required: true, max: 200, wide: true },
+    { name: 'issueDate', required: true, mask: '##.##.####', placeholder: t('placeholder.date'),
       check: (v, form) => {
         const valid = pastDate(v);
         if (valid !== true) return valid;
         const birth = Bank.parseDate(form.birthDate);
-        return !birth || Bank.parseDate(v) >= birth || 'Паспорт не может быть выдан раньше даты рождения';
+        return !birth || Bank.parseDate(v) >= birth || t('check.issueBeforeBirth');
       } },
   ]},
-  { title: 'Проживание и контакты', fields: [
-    { name: 'residenceCityId',    label: 'Город фактического проживания', required: true, type: 'select', dictionary: 'cities' },
-    { name: 'residenceAddress',   label: 'Адрес фактического проживания', required: true, max: 200, wide: true },
-    { name: 'registrationCityId', label: 'Город прописки', required: true, type: 'select', dictionary: 'cities' },
-    { name: 'homePhone',   label: 'Телефон домашний', mask: '###-##-##', placeholder: '293-88-44',
-      check: v => /^\d{3}-\d{2}-\d{2}$/.test(v) || 'Формат: 293-88-44' },
-    { name: 'mobilePhone', label: 'Телефон мобильный', mask: '+375 (##) ###-##-##', placeholder: '+375 (29) 314-15-92',
-      check: v => /^\+375 \((25|29|33|44)\) \d{3}-\d{2}-\d{2}$/.test(v) || 'Формат: +375 (29) 314-15-92, код 25, 29, 33 или 44' },
-    { name: 'email', label: 'E-mail', max: 100, placeholder: 'name@example.by',
-      check: v => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v) || 'Некорректный e-mail' },
+  { title: 'contacts', fields: [
+    { name: 'residenceCityId', required: true, type: 'select', dictionary: 'cities' },
+    { name: 'residenceAddress', required: true, max: 200, wide: true },
+    { name: 'registrationCityId', required: true, type: 'select', dictionary: 'cities' },
+    { name: 'homePhone', mask: '###-##-##', placeholder: '293-88-44',
+      check: v => /^\d{3}-\d{2}-\d{2}$/.test(v) || t('check.homePhone') },
+    { name: 'mobilePhone', mask: '+375 (##) ###-##-##', placeholder: '+375 (29) 314-15-92',
+      check: v => /^\+375 \((25|29|33|44)\) \d{3}-\d{2}-\d{2}$/.test(v) || t('check.mobilePhone') },
+    { name: 'email', max: 100, placeholder: 'name@example.by',
+      check: v => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v) || t('check.email') },
   ]},
-  { title: 'Социальный статус', fields: [
-    { name: 'maritalStatusId', label: 'Семейное положение', required: true, type: 'select', dictionary: 'maritalStatuses' },
-    { name: 'citizenshipId',   label: 'Гражданство',        required: true, type: 'select', dictionary: 'citizenships' },
-    { name: 'disabilityId',    label: 'Инвалидность',       required: true, type: 'select', dictionary: 'disabilities' },
-    { name: 'monthlyIncome',   label: 'Ежемесячный доход, BYN', placeholder: '0.00',
-      check: v => /^\d{1,12}([.,]\d{1,2})?$/.test(v) || 'Денежная сумма: только цифры и не более 2 знаков после запятой' },
-    { name: 'pensioner', label: 'Пенсионер', type: 'checkbox' },
+  { title: 'social', fields: [
+    { name: 'maritalStatusId', required: true, type: 'select', dictionary: 'maritalStatuses' },
+    { name: 'citizenshipId', required: true, type: 'select', dictionary: 'citizenships' },
+    { name: 'disabilityId', required: true, type: 'select', dictionary: 'disabilities' },
+    { name: 'monthlyIncome', placeholder: '0.00',
+      check: v => /^\d{1,12}([.,]\d{1,2})?$/.test(v) || t('check.income') },
+    { name: 'pensioner', type: 'checkbox' },
   ]},
 ];
 const FIELDS = SECTIONS.flatMap(section => section.fields);
@@ -72,7 +73,7 @@ function validate(form) {
     const value = typeof raw === 'string' ? raw.trim() : raw;
     const empty = value === null || value === undefined || value === '';
     if (empty) {
-      if (field.required) errors[field.name] = REQUIRED;
+      if (field.required) errors[field.name] = t('common.required');
       continue;
     }
     const result = field.check ? field.check(value, form) : true;
@@ -99,7 +100,7 @@ function toPayload(form) {
   return payload;
 }
 
-const app = Vue.createApp({
+const app = Bank.createApp({
   data() {
     return {
       view: 'list',            // list | form
@@ -149,7 +150,7 @@ const app = Vue.createApp({
     },
     async save() {
       this.errors = validate(this.form);
-      this.formError = Object.keys(this.errors).length ? 'Форма заполнена с ошибками — исправьте отмеченные поля' : '';
+      this.formError = Object.keys(this.errors).length ? t('common.formErrors') : '';
       if (this.formError) return window.scrollTo(0, 0);
       this.saving = true;
       try {
@@ -157,7 +158,7 @@ const app = Vue.createApp({
         if (this.editingId === null) await Bank.api('POST', '/api/clients', payload);
         else await Bank.api('PUT', '/api/clients/' + this.editingId, payload);
         await this.reload();
-        this.notice = this.editingId === null ? 'Клиент добавлен' : 'Изменения сохранены';
+        this.notice = this.editingId === null ? t('clients.added') : t('clients.saved');
         this.view = 'list';
       } catch (e) {
         this.errors = e.fields;        // сообщения серверной валидации показываются у тех же полей
@@ -168,11 +169,11 @@ const app = Vue.createApp({
       }
     },
     async remove(client) {
-      if (!confirm('Удалить клиента ' + client.fullName + '?')) return;
+      if (!confirm(t('clients.confirmDelete', client.fullName))) return;
       try {
         await Bank.api('DELETE', '/api/clients/' + client.id);
         await this.reload();
-        this.notice = 'Клиент удалён';
+        this.notice = t('clients.deleted');
         this.view = 'list';
       } catch (e) {
         this.notice = '';
@@ -192,18 +193,19 @@ const app = Vue.createApp({
       <section v-if="view === 'list'">
         <div class="toolbar">
           <div>
-            <h1>Список клиентов</h1>
-            <p class="subtitle">Всего клиентов: <span id="clients-count">{{ clients.length }}</span>. Сортировка по фамилии.</p>
+            <h1>{{ t('clients.list') }}</h1>
+            <p class="subtitle" id="clients-count">{{ t('clients.count', clients.length) }}</p>
           </div>
-          <button id="btn-add" class="primary" @click="openCreate">Добавить клиента</button>
+          <button id="btn-add" class="primary" @click="openCreate">{{ t('clients.add') }}</button>
         </div>
         <div v-if="notice" id="notice" class="alert success">{{ notice }}</div>
         <div class="card">
           <table id="clients">
             <thead>
               <tr>
-                <th>ФИО</th><th>Дата рождения</th><th>Паспорт</th><th>Идент. номер</th>
-                <th>Город проживания</th><th>Мобильный телефон</th><th class="num">Доход, BYN</th><th></th>
+                <th>{{ t('col.fio') }}</th><th>{{ t('col.birthDate') }}</th><th>{{ t('col.passport') }}</th>
+                <th>{{ t('col.identification') }}</th><th>{{ t('col.city') }}</th><th>{{ t('col.mobile') }}</th>
+                <th class="num">{{ t('col.income') }}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -216,30 +218,30 @@ const app = Vue.createApp({
                 <td class="nowrap">{{ client.mobilePhone }}</td>
                 <td class="num">{{ money(client.monthlyIncome) }}</td>
                 <td class="actions">
-                  <button class="small edit" @click="openEdit(client.id)">Изменить</button>
-                  <button class="small danger delete" @click="remove(client)">Удалить</button>
+                  <button class="small edit" @click="openEdit(client.id)">{{ t('clients.edit') }}</button>
+                  <button class="small danger delete" @click="remove(client)">{{ t('clients.delete') }}</button>
                 </td>
               </tr>
             </tbody>
           </table>
-          <div v-if="!clients.length" class="empty">Клиентов пока нет</div>
+          <div v-if="!clients.length" class="empty">{{ t('clients.empty') }}</div>
         </div>
       </section>
 
       <section v-else>
-        <h1>{{ editingId === null ? 'Новый клиент' : 'Редактирование клиента' }}</h1>
-        <p class="subtitle">Поля, отмеченные <span style="color: var(--bad)">*</span>, обязательны для заполнения.</p>
+        <h1>{{ editingId === null ? t('clients.new') : t('clients.editing') }}</h1>
+        <p class="subtitle">{{ t('clients.requiredHint') }}</p>
         <div v-if="formError" id="form-alert" class="alert error">{{ formError }}</div>
         <form class="card" novalidate @submit.prevent="save">
           <fieldset v-for="section in sections" :key="section.title">
-            <legend>{{ section.title }}</legend>
+            <legend>{{ t('section.' + section.title) }}</legend>
             <div class="form-grid">
               <div v-for="field in section.fields" :key="field.name"
                    class="field" :class="{ invalid: errors[field.name], wide: field.wide }">
-                <label :for="'f-' + field.name">{{ field.label }} <span v-if="field.required" class="req">*</span></label>
+                <label :for="'f-' + field.name">{{ t('field.' + field.name) }} <span v-if="field.required" class="req">*</span></label>
 
                 <select v-if="field.type === 'select'" :id="'f-' + field.name" v-model="form[field.name]">
-                  <option :value="null">— выберите —</option>
+                  <option :value="null">{{ t('clients.choose') }}</option>
                   <option v-for="item in options(field)" :key="item.id" :value="item.id">{{ item.name }}</option>
                 </select>
 
@@ -251,7 +253,7 @@ const app = Vue.createApp({
                 </div>
 
                 <div v-else-if="field.type === 'checkbox'" class="choices">
-                  <label><input type="checkbox" :id="'f-' + field.name" v-model="form[field.name]"> да</label>
+                  <label><input type="checkbox" :id="'f-' + field.name" v-model="form[field.name]"> {{ t('clients.yes') }}</label>
                 </div>
 
                 <input v-else-if="field.mask" type="text" :id="'f-' + field.name" v-model="form[field.name]"
@@ -265,17 +267,15 @@ const app = Vue.createApp({
             </div>
           </fieldset>
           <div class="form-actions">
-            <button id="btn-save" type="submit" class="primary" :disabled="saving">Сохранить</button>
-            <button id="btn-cancel" type="button" @click="view = 'list'">Отмена</button>
+            <button id="btn-save" type="submit" class="primary" :disabled="saving">{{ t('clients.save') }}</button>
+            <button id="btn-cancel" type="button" @click="view = 'list'">{{ t('common.cancel') }}</button>
             <span style="flex: 1"></span>
             <button v-if="editingId !== null" id="btn-delete" type="button" class="danger"
-                    @click="remove({ id: editingId, fullName: form.lastName + ' ' + form.firstName })">Удалить клиента</button>
+                    @click="remove({ id: editingId, fullName: form.lastName + ' ' + form.firstName })">{{ t('clients.deleteClient') }}</button>
           </div>
         </form>
       </section>
     </main>`,
-});
+}, 'clients.page');
 
-app.component('bank-nav', Bank.navComponent);
-app.directive('mask', Bank.maskDirective);
 app.mount('#app');

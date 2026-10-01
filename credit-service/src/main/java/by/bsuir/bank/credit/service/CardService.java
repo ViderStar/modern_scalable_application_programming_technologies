@@ -1,6 +1,7 @@
 package by.bsuir.bank.credit.service;
 
 import by.bsuir.bank.common.api.BankException;
+import by.bsuir.bank.common.i18n.Messages;
 import by.bsuir.bank.credit.domain.Card;
 import by.bsuir.bank.credit.domain.CardNumbers;
 import by.bsuir.bank.credit.domain.CreditContract;
@@ -37,9 +38,18 @@ public class CardService {
     @Transactional
     public PinEnvelope reissuePin(Long contractId) {
         Card card = cards.findByContractId(contractId)
-                .orElseThrow(() -> BankException.notFound("К договору не выпущена карта"));
+                .orElseThrow(() -> BankException.notFound(Messages.get("credit.noCard")));
         card.resetAttempts();
         return assignPin(card);
+    }
+
+    /** Назначение заранее известного PIN-кода — только для демонстрационных карт. */
+    @Transactional
+    public void assignPin(Long contractId, String pin) {
+        Card card = cards.findByContractId(contractId)
+                .orElseThrow(() -> BankException.notFound(Messages.get("credit.noCard")));
+        card.setPinHash(encoder.encode(pin));
+        cards.save(card);
     }
 
     public boolean matches(Card card, String pin) {

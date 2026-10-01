@@ -2,6 +2,7 @@ package by.bsuir.bank.atm;
 
 import by.bsuir.bank.atm.bank.BankGateway;
 import by.bsuir.bank.atm.bank.BankReply;
+import by.bsuir.bank.atm.bank.DemoCard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.client.ResourceAccessException;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -75,6 +78,32 @@ class AtmApiIT {
         mvc.perform(get("/api/sessions/no-such-session"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("Экран приходит на языке запроса")
+    void screenLanguage() throws Exception {
+        String id = openSession();
+
+        mvc.perform(get("/api/sessions/" + id).header("Accept-Language", "en"))
+                .andExpect(jsonPath("$.title").value("Please insert your card"));
+        mvc.perform(post("/api/sessions/" + id + "/enter").header("Accept-Language", "be")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"value\": \"123\"}"))
+                .andExpect(jsonPath("$.title").value("Устаўце, калі ласка, картку"))
+                .andExpect(jsonPath("$.notice").value("Нумар карткі складаецца з 16 лічбаў"));
+    }
+
+    @Test
+    @DisplayName("Демо-карты запрашиваются у банка; если банк недоступен, подсказка пуста")
+    void demoCards() throws Exception {
+        when(bank.demoCards()).thenReturn(List.of(
+                new DemoCard("9112380000000010", "1111", "Иванов Иван Иванович", "К-900001", false)));
+        mvc.perform(get("/api/demo-cards"))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].pin").value("1111"));
+
+        when(bank.demoCards()).thenThrow(new ResourceAccessException("Connection refused"));
+        mvc.perform(get("/api/demo-cards")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
     }
 
     private String openSession() throws Exception {

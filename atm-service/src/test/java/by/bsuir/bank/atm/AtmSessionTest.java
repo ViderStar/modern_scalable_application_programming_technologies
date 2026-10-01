@@ -18,12 +18,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -357,6 +359,32 @@ class AtmSessionTest {
         assertThat(screen.notice()).startsWith("Заберите карту");
         assertThat(screen.cardInside()).isFalse();
         assertThat(screen.buffer()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Экран, сообщения и чек формируются на языке клиента")
+    void screensAreLocalized() {
+        try {
+            LocaleContextHolder.setLocale(Locale.ENGLISH);
+            assertThat(atm.screen().title()).isEqualTo("Please insert your card");
+            atm.enter(CARD);
+            assertThat(atm.enter("0000").notice()).isEqualTo("Wrong PIN. Attempts left: 2");
+            Screen menu = atm.enter(PIN);
+            assertThat(menu.options()).extracting(Screen.Option::label)
+                    .containsExactly("Withdraw cash", "Loan account balance", "Deposit account balance", "Mobile top-up", "Take the card");
+
+            LocaleContextHolder.setLocale(Locale.forLanguageTag("be"));
+            atm.select("WITHDRAW");
+            Screen done = atm.enter("300");
+            assertThat(done.title()).isEqualTo("Забярыце грошы");
+            assertThat(atm.select("YES").receipt()).contains("BANKET", "ВЫДАЧА НАЯЎНЫХ", "Сума: 300.00 BYN", "ДЗЯКУЙ!");
+
+            Screen ejected = atm.select("EJECT");
+            assertThat(ejected.notice()).startsWith("Забярыце картку");
+            assertThat(ejected.noticeOk()).isTrue();
+        } finally {
+            LocaleContextHolder.resetLocaleContext();
+        }
     }
 
     static void login(AtmSession atm) {

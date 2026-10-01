@@ -1,15 +1,32 @@
--- Справочники
-insert into city (name) values
-    ('Минск'), ('Брест'), ('Витебск'), ('Гомель'), ('Гродно'), ('Могилёв'), ('Барановичи'), ('Борисов');
+-- Справочники: наименование на русском, английском и белорусском языках
+insert into city (name, name_en, name_be) values
+    ('Минск', 'Minsk', 'Мінск'),
+    ('Брест', 'Brest', 'Брэст'),
+    ('Витебск', 'Vitebsk', 'Віцебск'),
+    ('Гомель', 'Gomel', 'Гомель'),
+    ('Гродно', 'Grodno', 'Гродна'),
+    ('Могилёв', 'Mogilev', 'Магілёў'),
+    ('Барановичи', 'Baranovichi', 'Баранавічы'),
+    ('Борисов', 'Borisov', 'Барысаў');
 
-insert into marital_status (name) values
-    ('Холост / не замужем'), ('Женат / замужем'), ('Разведён / разведена'), ('Вдовец / вдова');
+insert into marital_status (name, name_en, name_be) values
+    ('Холост / не замужем', 'Single', 'Халасты / незамужняя'),
+    ('Женат / замужем', 'Married', 'Жанаты / замужам'),
+    ('Разведён / разведена', 'Divorced', 'Разведзены / разведзеная'),
+    ('Вдовец / вдова', 'Widowed', 'Удавец / удава');
 
-insert into citizenship (name) values
-    ('Республика Беларусь'), ('Российская Федерация'), ('Республика Казахстан'), ('Украина'), ('Литовская Республика');
+insert into citizenship (name, name_en, name_be) values
+    ('Республика Беларусь', 'Republic of Belarus', 'Рэспубліка Беларусь'),
+    ('Российская Федерация', 'Russian Federation', 'Расійская Федэрацыя'),
+    ('Республика Казахстан', 'Republic of Kazakhstan', 'Рэспубліка Казахстан'),
+    ('Украина', 'Ukraine', 'Украіна'),
+    ('Литовская Республика', 'Republic of Lithuania', 'Літоўская Рэспубліка');
 
-insert into disability (name) values
-    ('Нет'), ('I группа'), ('II группа'), ('III группа');
+insert into disability (name, name_en, name_be) values
+    ('Нет', 'None', 'Няма'),
+    ('I группа', 'Group I', 'I група'),
+    ('II группа', 'Group II', 'II група'),
+    ('III группа', 'Group III', 'III група');
 
 -- Тестовые клиенты (паспортные данные вымышленные)
 insert into client (last_name, first_name, middle_name, birth_date, sex, passport_series, passport_number,

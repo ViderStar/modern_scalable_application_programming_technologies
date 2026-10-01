@@ -10,6 +10,7 @@ import by.bsuir.bank.client.repository.ClientRepository;
 import by.bsuir.bank.client.repository.DisabilityRepository;
 import by.bsuir.bank.client.repository.MaritalStatusRepository;
 import by.bsuir.bank.client.validation.Dates;
+import by.bsuir.bank.common.i18n.Messages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,6 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ClientService {
-
-    static final String DUPLICATE_PASSPORT = "Клиент с таким паспортом уже зарегистрирован";
-    static final String DUPLICATE_IDENTIFICATION = "Клиент с таким идентификационным номером уже зарегистрирован";
 
     private final ClientRepository clients;
     private final CityRepository cities;
@@ -71,8 +69,8 @@ public class ClientService {
         LocalDate birthDate = Dates.parse(request.birthDate()).orElseThrow();
         LocalDate issueDate = Dates.parse(request.issueDate()).orElseThrow();
         if (issueDate.isBefore(birthDate)) {
-            throw new FieldErrorException(HttpStatus.BAD_REQUEST, "Проверьте правильность заполнения полей",
-                    Map.of("issueDate", "Паспорт не может быть выдан раньше даты рождения"));
+            throw new FieldErrorException(HttpStatus.BAD_REQUEST, Messages.get("error.checkFields"),
+                    Map.of("issueDate", Messages.get("client.issueBeforeBirth")));
         }
         checkUnique(request, client.getId());
 
@@ -108,20 +106,20 @@ public class ClientService {
         clients.findByPassportSeriesAndPassportNumber(request.passportSeries(), request.passportNumber())
                 .filter(other -> !other.getId().equals(selfId))
                 .ifPresent(other -> {
-                    errors.put("passportSeries", DUPLICATE_PASSPORT);
-                    errors.put("passportNumber", DUPLICATE_PASSPORT);
+                    errors.put("passportSeries", Messages.get("client.duplicatePassport"));
+                    errors.put("passportNumber", Messages.get("client.duplicatePassport"));
                 });
         clients.findByIdentificationNumber(request.identificationNumber())
                 .filter(other -> !other.getId().equals(selfId))
-                .ifPresent(other -> errors.put("identificationNumber", DUPLICATE_IDENTIFICATION));
+                .ifPresent(other -> errors.put("identificationNumber", Messages.get("client.duplicateIdentification")));
         if (!errors.isEmpty()) {
-            throw new FieldErrorException(HttpStatus.CONFLICT, "Такой клиент уже есть в базе", errors);
+            throw new FieldErrorException(HttpStatus.CONFLICT, Messages.get("client.duplicate"), errors);
         }
     }
 
     private static <T> T reference(JpaRepository<T, Long> dictionary, Long id, String field) {
         return dictionary.findById(id).orElseThrow(() -> new FieldErrorException(HttpStatus.BAD_REQUEST,
-                "Проверьте правильность заполнения полей", Map.of(field, "Значение отсутствует в справочнике")));
+                Messages.get("error.checkFields"), Map.of(field, Messages.get("client.unknownDictionaryValue"))));
     }
 
     private static String blankToNull(String value) {
@@ -129,6 +127,6 @@ public class ClientService {
     }
 
     private static NotFoundException notFound(Long id) {
-        return new NotFoundException("Клиент с идентификатором " + id + " не найден");
+        return new NotFoundException(Messages.get("client.notFound", id));
     }
 }

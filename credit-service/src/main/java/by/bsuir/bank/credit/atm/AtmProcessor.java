@@ -2,6 +2,8 @@ package by.bsuir.bank.credit.atm;
 
 import by.bsuir.bank.common.api.ApiError;
 import by.bsuir.bank.common.api.BankException;
+import by.bsuir.bank.common.i18n.Localized;
+import by.bsuir.bank.common.i18n.Messages;
 import by.bsuir.bank.common.ledger.AccountInfo;
 import by.bsuir.bank.common.ledger.Batch;
 import by.bsuir.bank.common.ledger.LedgerApi;
@@ -23,6 +25,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,39 +58,39 @@ public class AtmProcessor {
         request.items().forEach(item -> tx.put(item.name(), item.value()));
         String operation = tx.get("OPERATION");
         if (tx.get("CARD") == null || tx.get("PIN") == null || operation == null) {
-            return AtmResponse.error("BAD_REQUEST", "Неполное описание транзакции");
+            return AtmResponse.error("BAD_REQUEST", Messages.get("atm.incomplete"));
         }
 
         Card card = cards.findByNumber(tx.get("CARD")).orElse(null);
         if (card == null) {
-            return AtmResponse.error("CARD_NOT_FOUND", "Карта не обслуживается банком");
+            return AtmResponse.error("CARD_NOT_FOUND", Messages.get("atm.cardNotFound"));
         }
         if (card.isBlocked()) {
-            return AtmResponse.error("CARD_BLOCKED", "Карта заблокирована. Обратитесь в банк");
+            return AtmResponse.error("CARD_BLOCKED", Messages.get("atm.cardBlocked"));
         }
         if (!cardService.matches(card, tx.get("PIN"))) {
             int left = card.registerFailedAttempt();
             return left == 0
-                    ? AtmResponse.error("CARD_BLOCKED", "PIN-код трижды введён неверно. Карта заблокирована")
-                    : AtmResponse.error("WRONG_PIN", "Неверный PIN-код. Осталось попыток: " + left, Map.of("attemptsLeft", left));
+                    ? AtmResponse.error("CARD_BLOCKED", Messages.get("atm.blockedNow"))
+                    : AtmResponse.error("WRONG_PIN", Messages.get("atm.wrongPin", left), Map.of("attemptsLeft", left));
         }
         card.setFailedAttempts(0);
 
         try {
             return switch (operation) {
-                case "AUTHORIZE" -> AtmResponse.ok("Авторизация выполнена", Map.of("holder", card.getHolder()));
+                case "AUTHORIZE" -> AtmResponse.ok(Messages.get("atm.authorized"), Map.of("holder", card.getHolder()));
                 case "BALANCE" -> balance(card);
                 case "DEPOSIT_BALANCE" -> depositBalance(card);
                 case "WITHDRAW" -> withdraw(card, tx.get("AMOUNT"));
                 case "PAYMENT" -> payment(card, tx.get("OPERATOR"), tx.get("PHONE"), tx.get("AMOUNT"));
-                default -> AtmResponse.error("UNKNOWN_OPERATION", "Операция не поддерживается");
+                default -> AtmResponse.error("UNKNOWN_OPERATION", Messages.get("atm.unknownOperation"));
             };
         } catch (BankException e) {
             return AtmResponse.error(e.getCode(), e.getMessage());
         } catch (RestClientResponseException e) {
             return rejected(e);
         } catch (RestClientException e) {
-            return AtmResponse.error("SERVICE_UNAVAILABLE", "Операция временно недоступна");
+            return AtmResponse.error("SERVICE_UNAVAILABLE", Messages.get("atm.unavailable"));
         }
     }
 
@@ -101,7 +104,7 @@ public class AtmProcessor {
         } catch (RuntimeException ignored) {
             // тело ответа не в формате ApiError
         }
-        return AtmResponse.error("BANK_ERROR", "Операция отклонена банком");
+        return AtmResponse.error("BANK_ERROR", Messages.get("atm.rejected"));
     }
 
     public List<MobileOperator> operators() {
@@ -111,7 +114,7 @@ public class AtmProcessor {
     private AtmResponse balance(Card card) {
         CreditContract contract = card.getContract();
         AccountInfo account = ledger.account(contract.getMainAccount());
-        return AtmResponse.ok("Остаток кредитного счёта", receipt(card, Map.of(
+        return AtmResponse.ok(Messages.get("atm.balance"), receipt(card, Map.of(
                 "account", account.number(), "balance", account.balance(), "currency", account.currency())));
     }
 
@@ -121,30 +124,30 @@ public class AtmProcessor {
                 .map(deposit -> Map.<String, Object>of("number", deposit.number(), "product", deposit.productName(),
                         "amount", deposit.amount(), "currency", deposit.currency()))
                 .toList();
-        return AtmResponse.ok(active.isEmpty() ? "Действующих вкладов нет" : "Остатки депозитных счетов",
+        return AtmResponse.ok(Messages.get(active.isEmpty() ? "atm.noDeposits" : "atm.deposits"),
                 receipt(card, Map.of("deposits", active)));
     }
 
     private AtmResponse withdraw(Card card, String text) {
         if (text == null || !text.matches("\\d{1,9}") || Long.parseLong(text) == 0) {
-            return AtmResponse.error("INVALID_AMOUNT", "Сумма должна быть целым положительным числом");
+            return AtmResponse.error("INVALID_AMOUNT", Messages.get("atm.invalidWithdrawAmount"));
         }
         BigDecimal amount = new BigDecimal(text);
         AccountInfo account = credits.cashOut(card.getContract().getId(), amount);
-        return AtmResponse.ok("Заберите деньги", receipt(card, Map.of(
+        return AtmResponse.ok(Messages.get("atm.takeCash"), receipt(card, Map.of(
                 "amount", amount, "balance", account.balance(), "currency", account.currency())));
     }
 
     private AtmResponse payment(Card card, String operatorCode, String phone, String text) {
         MobileOperator operator = operatorCode == null ? null : operators.findById(operatorCode).orElse(null);
         if (operator == null) {
-            return AtmResponse.error("UNKNOWN_OPERATOR", "Оператор связи не найден");
+            return AtmResponse.error("UNKNOWN_OPERATOR", Messages.get("atm.unknownOperator"));
         }
         if (phone == null || !phone.matches(PHONE_FORMAT)) {
-            return AtmResponse.error("INVALID_PHONE", "Номер телефона: 10 цифр, например 0291234567");
+            return AtmResponse.error("INVALID_PHONE", Messages.get("atm.invalidPhone"));
         }
         if (text == null || !text.matches("\\d{1,9}(\\.\\d{1,2})?") || new BigDecimal(text).signum() == 0) {
-            return AtmResponse.error("INVALID_AMOUNT", "Сумма платежа должна быть положительным числом");
+            return AtmResponse.error("INVALID_AMOUNT", Messages.get("atm.invalidPaymentAmount"));
         }
         BigDecimal amount = new BigDecimal(text);
         CreditContract contract = card.getContract();
@@ -152,17 +155,16 @@ public class AtmProcessor {
         AccountInfo main = ledger.account(contract.getMainAccount());
         if (main.balance().compareTo(amount) < 0) {
             return AtmResponse.error("INSUFFICIENT_FUNDS",
-                    "Недостаточно средств на счёте: доступно " + main.balance() + " " + currency);
+                    Messages.get("credit.insufficient", main.balance().setScale(2, RoundingMode.HALF_UP), currency));
         }
 
         // расчётный счёт оператора открывается при первом платеже; повторный запрос вернёт тот же счёт
         String operatorAccount = ledger.open(new OpenAccount(OPERATOR_CHART_CODE, currency, null,
-                "Расчётный счёт оператора " + operator.getName(), "OPERATOR-" + operator.getCode() + "-" + currency)).number();
+                Localized.code("account.operator", operator.getName()), "OPERATOR-" + operator.getCode() + "-" + currency)).number();
         String reference = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         LocalDate date = ledger.bankDay().date();
         ledger.post(Batch.of("ATM-PAYMENT-" + reference, contract.getNumber(), date,
-                CreditPostings.mobilePayment(main.number(), operatorAccount,
-                        "Оплата услуг связи " + operator.getName() + ", номер " + phone, amount)));
+                CreditPostings.mobilePayment(main.number(), operatorAccount, operator.getName(), phone, amount)));
 
         MobilePayment payment = new MobilePayment();
         payment.setCardNumber(card.getNumber());
@@ -173,7 +175,7 @@ public class AtmProcessor {
         payment.setReference(reference);
         payments.save(payment);
 
-        return AtmResponse.ok("Платёж принят", receipt(card, Map.of(
+        return AtmResponse.ok(Messages.get("atm.paymentAccepted"), receipt(card, Map.of(
                 "operator", operator.getName(), "phone", phone, "amount", amount, "currency", currency,
                 "balance", main.balance().subtract(amount), "reference", reference)));
     }

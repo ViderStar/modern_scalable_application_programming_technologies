@@ -8,18 +8,20 @@ import by.bsuir.bank.atm.bank.Transaction;
 import by.bsuir.bank.atm.session.Screen.Exchange;
 import by.bsuir.bank.atm.session.Screen.Input;
 import by.bsuir.bank.atm.session.Screen.Option;
+import by.bsuir.bank.common.i18n.Messages;
 import org.springframework.web.client.RestClientException;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 /**
  * Сеанс работы с банкоматом — конечный автомат. Вводимые данные накапливаются во внутреннем
  * списке {@link #buffer}; когда для операции собрано всё необходимое, список целиком
- * отправляется банку одной транзакцией и очищается.
+ * отправляется банку одной транзакцией и очищается. Тексты экрана формируются на языке запроса.
  */
 public class AtmSession {
 
@@ -44,6 +46,7 @@ public class AtmSession {
     private BankReply reply;
     private List<Operator> operators = List.of();
     private String notice;
+    private boolean noticeOk;
     private String cash;
     private List<String> receipt;
     private Exchange exchange;
@@ -70,7 +73,7 @@ public class AtmSession {
             case INSERT_CARD -> insertCard(value);
             case PIN -> {
                 if (!value.matches("\\d{4}")) {
-                    notice = "PIN-код состоит из 4 цифр";
+                    warn("notice.pinLength");
                 } else {
                     buffer.add(new Item(Item.PIN, value));
                     authorize();
@@ -83,7 +86,7 @@ public class AtmSession {
             }
             case PHONE -> {
                 if (!value.matches("\\d{10}")) {
-                    notice = "Номер телефона — 10 цифр, например 0291234567";
+                    warn("notice.phoneLength");
                 } else {
                     buffer.add(new Item(Item.PHONE, value));
                     state = AtmState.PAY_AMOUNT;
@@ -107,7 +110,7 @@ public class AtmSession {
         switch (state) {
             case MENU -> {
                 if ("EJECT".equals(option)) {
-                    eject("Заберите карту. Спасибо, что воспользовались нашим банкоматом");
+                    eject(Messages.get("notice.eject"), true);
                 } else if (OPERATIONS.contains(option)) {
                     chooseOperation(option);
                 }
@@ -134,7 +137,7 @@ public class AtmSession {
             }
             case RESULT, MESSAGE -> {
                 if ("EJECT".equals(option)) {
-                    eject("Заберите карту. Спасибо, что воспользовались нашим банкоматом");
+                    eject(Messages.get("notice.eject"), true);
                 } else {
                     state = AtmState.MENU;
                 }
@@ -152,11 +155,12 @@ public class AtmSession {
         switch (state) {
             case INSERT_CARD -> {
             }
-            case PIN, MENU -> eject("Операция отменена. Заберите карту");
+            case PIN, MENU -> eject(Messages.get("notice.cancelEject"), true);
             default -> {
                 dropFromBuffer(Item.OPERATION, Item.AMOUNT, Item.OPERATOR, Item.PHONE);
                 state = AtmState.MENU;
-                notice = "Операция отменена";
+                notice = Messages.get("notice.cancelled");
+                noticeOk = true;
             }
         }
         return screen();
@@ -167,15 +171,16 @@ public class AtmSession {
     private void begin() {
         touched = clock.instant();
         notice = null;
+        noticeOk = false;
         cash = null;
         receipt = null;
     }
 
     private void insertCard(String number) {
         if (!number.matches("\\d{16}")) {
-            notice = "Номер карты состоит из 16 цифр";
+            warn("notice.cardLength");
         } else if (!luhnValid(number)) {
-            notice = "Карта не читается: проверьте номер";
+            warn("notice.cardUnreadable");
         } else {
             card = number;
             pinAttempts = 0;
@@ -193,7 +198,7 @@ public class AtmSession {
         BankReply answer = send(request);
         if (answer == null) {
             dropFromBuffer(Item.PIN);
-            notice = "Нет связи с банком. Повторите попытку позже";
+            warn("notice.noLinkRetry");
         } else if (answer.ok()) {
             pinAttempts = 0;
             if (pendingOperation != null) {
@@ -205,12 +210,12 @@ public class AtmSession {
             dropFromBuffer(Item.PIN);
             pinAttempts++;
             if (pinAttempts >= MAX_PIN_ATTEMPTS) {
-                eject("PIN-код введён неверно три раза. Работа завершена, заберите карту");
+                eject(Messages.get("notice.threePins"), false);
             } else {
-                notice = "Неверный PIN-код. Осталось попыток: " + (MAX_PIN_ATTEMPTS - pinAttempts);
+                warn("notice.wrongPin", MAX_PIN_ATTEMPTS - pinAttempts);
             }
         } else {
-            eject(answer.message() + ". Заберите карту");
+            eject(Messages.get("notice.takeCard", answer.message()), false);
         }
     }
 
@@ -242,7 +247,7 @@ public class AtmSession {
                 } catch (RestClientException e) {
                     dropFromBuffer(Item.OPERATION);
                     state = AtmState.MENU;
-                    notice = "Нет связи с банком. Платежи временно недоступны";
+                    warn("notice.noLinkPayments");
                 }
             }
             default -> execute();          // BALANCE, DEPOSIT_BALANCE: дополнительных данных не требуется
@@ -251,11 +256,11 @@ public class AtmSession {
 
     private boolean acceptAmount(String value) {
         if (!value.matches("\\d{1,7}")) {
-            notice = "Сумма — целое неотрицательное число";
+            warn("notice.amountInteger");
             return false;
         }
         if (Integer.parseInt(value) == 0) {
-            notice = "Сумма должна быть больше нуля";
+            warn("notice.amountPositive");
             return false;
         }
         buffer.add(new Item(Item.AMOUNT, String.valueOf(Integer.parseInt(value))));
@@ -268,10 +273,10 @@ public class AtmSession {
         buffer.clear();
         if (reply == null) {
             state = AtmState.MESSAGE;
-            notice = "Нет связи с банком. Операция не выполнена";
+            warn("notice.noLinkOperation");
         } else if (!reply.ok()) {
             if ("WRONG_PIN".equals(reply.code()) || "CARD_BLOCKED".equals(reply.code())) {
-                eject(reply.message() + ". Заберите карту");
+                eject(Messages.get("notice.takeCard", reply.message()), false);
             } else {
                 state = AtmState.MESSAGE;
                 notice = reply.message();
@@ -299,8 +304,14 @@ public class AtmSession {
         }
     }
 
-    /** Возврат карты: сеанс завершается, банкомат снова ждёт карту. */
-    private void eject(String message) {
+    /** Сообщение об ошибке ввода или отказе на языке клиента. */
+    private void warn(String key, Object... args) {
+        notice = Messages.get(key, args);
+        noticeOk = false;
+    }
+
+    /** Возврат карты: сеанс завершается, банкомат снова ждёт карту. farewell — прощание, а не ошибка. */
+    private void eject(String message, boolean farewell) {
         buffer.clear();
         card = null;
         pinAttempts = 0;
@@ -309,6 +320,7 @@ public class AtmSession {
         reply = null;
         state = AtmState.INSERT_CARD;
         notice = message;
+        noticeOk = farewell;
     }
 
     private boolean hasCredentials() {
@@ -348,6 +360,11 @@ public class AtmSession {
 
     // ---------- экран ----------
 
+    /** Пункты меню: ключ операции и подпись на языке клиента (option.<ключ>). */
+    private static List<Option> options(String... keys) {
+        return Arrays.stream(keys).map(key -> new Option(key, Messages.get("option." + key))).toList();
+    }
+
     public synchronized Screen screen() {
         String title;
         List<String> lines = List.of();
@@ -355,76 +372,78 @@ public class AtmSession {
         List<Option> options = List.of();
         switch (state) {
             case INSERT_CARD -> {
-                title = "Вставьте, пожалуйста, карту";
-                lines = List.of("(введите её номер)");
+                title = Messages.get("screen.insertCard.title");
+                lines = List.of(Messages.get("screen.insertCard.hint"));
                 input = new Input("CARD", 16, true);
             }
             case PIN -> {
-                title = pendingOperation == null ? "Введите PIN-код" : "Введите PIN-код ещё раз";
-                lines = pendingOperation == null ? List.of() : List.of("Для новой операции данные карты вводятся заново");
+                title = Messages.get(pendingOperation == null ? "screen.pin.title" : "screen.pin.again");
+                lines = pendingOperation == null ? List.of() : List.of(Messages.get("screen.pin.againHint"));
                 input = new Input("PIN", 4, true);
             }
             case MENU -> {
-                title = "Выберите операцию";
-                options = List.of(
-                        new Option("WITHDRAW", "Снять наличные"),
-                        new Option("BALANCE", "Остаток кредитного счёта"),
-                        new Option("DEPOSIT_BALANCE", "Остаток депозитного счёта"),
-                        new Option("PAYMENT", "Оплата мобильной связи"),
-                        new Option("EJECT", "Забрать карту"));
+                title = Messages.get("screen.menu.title");
+                options = options("WITHDRAW", "BALANCE", "DEPOSIT_BALANCE", "PAYMENT", "EJECT");
             }
             case AMOUNT -> {
-                title = "Введите сумму";
-                lines = List.of("Снятие наличных с кредитного счёта, " + CURRENCY);
+                title = Messages.get("screen.amount.title");
+                lines = List.of(Messages.get("screen.amount.hint", CURRENCY));
                 input = new Input("NUMBER", 7, false);
             }
             case OPERATOR -> {
-                title = "Выберите оператора связи";
+                title = Messages.get("screen.operator.title");
                 options = operators.stream().map(o -> new Option(o.code(), o.name())).toList();
             }
             case PHONE -> {
-                title = "Введите номер телефона";
-                lines = List.of("10 цифр, например 0291234567");
+                title = Messages.get("screen.phone.title");
+                lines = List.of(Messages.get("screen.phone.hint"));
                 input = new Input("NUMBER", 10, true);
             }
             case PAY_AMOUNT -> {
-                title = "Введите сумму платежа";
-                lines = List.of("Оплата мобильной связи, " + CURRENCY);
+                title = Messages.get("screen.payAmount.title");
+                lines = List.of(Messages.get("screen.payAmount.hint", CURRENCY));
                 input = new Input("NUMBER", 7, false);
             }
             case CONFIRM -> {
-                title = "Проверьте данные платежа";
+                title = Messages.get("screen.confirm.title");
                 String code = valueOf(Item.OPERATOR);
                 String name = operators.stream().filter(o -> o.code().equals(code)).map(Operator::name).findFirst().orElse(code);
-                lines = List.of("Оператор: " + name, "Телефон: " + valueOf(Item.PHONE),
-                        "Сумма: " + valueOf(Item.AMOUNT) + " " + CURRENCY);
-                options = List.of(new Option("CONFIRM", "Подтвердить"), new Option("RETRY", "Ввести заново"));
+                lines = List.of(Messages.get("screen.confirm.operator", name),
+                        Messages.get("screen.confirm.phone", valueOf(Item.PHONE)),
+                        Messages.get("screen.confirm.amount", valueOf(Item.AMOUNT), CURRENCY));
+                options = options("CONFIRM", "RETRY");
             }
             case RECEIPT_PROMPT -> {
-                title = "WITHDRAW".equals(operation) ? "Заберите деньги" : "Данные получены";
-                lines = "WITHDRAW".equals(operation)
-                        ? List.of("Выдано: " + Receipts.money(reply, "amount"), "Распечатать чек?")
-                        : List.of("Распечатать чек?");
-                options = List.of(new Option("YES", "Да"), new Option("NO", "Нет"));
+                boolean withdrawal = "WITHDRAW".equals(operation);
+                title = Messages.get(withdrawal ? "screen.receipt.takeCash" : "screen.receipt.dataReady");
+                lines = withdrawal
+                        ? List.of(Messages.get("screen.receipt.dispensed", Receipts.money(reply, "amount")),
+                                Messages.get("screen.receipt.print"))
+                        : List.of(Messages.get("screen.receipt.print"));
+                options = options("YES", "NO");
             }
             case RESULT -> {
                 if ("BALANCE".equals(operation)) {
-                    title = "Остаток кредитного счёта";
-                    lines = List.of("Доступно: " + Receipts.money(reply, "balance"));
+                    title = Messages.get("screen.result.balance");
+                    lines = List.of(Messages.get("screen.result.available", Receipts.money(reply, "balance")));
                 } else {
-                    title = "Депозитные счета";
+                    title = Messages.get("screen.result.deposits");
                     lines = Receipts.deposits(reply);
                 }
-                options = List.of(new Option("CONTINUE", "Продолжить работу"), new Option("EJECT", "Забрать карту"));
+                options = List.of(new Option("CONTINUE", Messages.get("option.CONTINUE_WORK")),
+                        new Option("EJECT", Messages.get("option.EJECT")));
             }
             default -> {
                 boolean success = reply != null && reply.ok();
-                title = success ? "Платёж принят" : "Операция не выполнена";
-                lines = success ? List.of("Оплачено: " + Receipts.money(reply, "amount"), "Возьмите чек") : List.of();
-                options = List.of(new Option("CONTINUE", "Продолжить"));
+                title = Messages.get(success ? "screen.message.paid" : "screen.message.failed");
+                lines = success
+                        ? List.of(Messages.get("screen.message.paidAmount", Receipts.money(reply, "amount")),
+                                Messages.get("screen.message.takeReceipt"))
+                        : List.of();
+                options = options("CONTINUE");
             }
         }
-        return new Screen(state.name(), title, lines, input, options, notice, card != null, cash, receipt,
+        return new Screen(state.name(), title, lines, input, options, notice, noticeOk, card != null, cash, receipt,
                 buffer.stream().map(Item::masked).toList(), exchange);
     }
 }

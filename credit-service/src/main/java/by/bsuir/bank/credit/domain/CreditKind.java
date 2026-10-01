@@ -1,18 +1,18 @@
 package by.bsuir.bank.credit.domain;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import by.bsuir.bank.common.i18n.Messages;
 
 /** Вид кредита определяет способ погашения. */
-@Getter
-@RequiredArgsConstructor
 public enum CreditKind {
 
     /** Ежемесячное погашение долга равными аннуитетными платежами. */
-    ANNUITY("Аннуитетные платежи"),
+    ANNUITY,
 
     /** Ежемесячное погашение процентов, вся сумма кредита возвращается в конце срока. */
-    INTEREST_ONLY("Проценты ежемесячно, долг в конце срока");
+    INTEREST_ONLY;
 
-    private final String title;
+    /** Название вида кредита на языке запроса. */
+    public String getTitle() {
+        return Messages.get("credit.kind." + name());
+    }
 }

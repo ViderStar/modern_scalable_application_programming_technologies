@@ -10,11 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 STYLES = {
     ".java": "java", ".js": "js", ".sql": "sql", ".yml": "yaml", ".xml": "xml", ".html": "xml",
-    ".css": "css", ".sh": "shell", ".py": "python",
+    ".css": "css", ".sh": "shell", ".py": "python", ".properties": "properties",
 }
 
 # Порядок пакетов внутри сервиса: от модели данных к REST-слою
-PACKAGE_ORDER = ["", "domain", "repository", "dto", "validation", "api", "client", "ledger", "bank",
+PACKAGE_ORDER = ["", "domain", "repository", "dto", "validation", "api", "i18n", "client", "ledger", "bank",
                  "session", "service", "atm", "web"]
 
 
@@ -26,6 +26,8 @@ def module_files(module, only=None):
     for name in ("application.yml", "schema.sql", "data.sql"):
         if (resources / name).exists():
             files.append(resources / name)
+    # словари сообщений: русский (без суффикса), английский, белорусский
+    files += sorted(resources.glob("*messages*.properties"), key=lambda p: (len(p.name), p.name))
 
     def java_key(path):
         package = path.parent.name if path.parent.name in PACKAGE_ORDER else ""
@@ -33,7 +35,7 @@ def module_files(module, only=None):
 
     files += sorted((base / "src/main/java").rglob("*.java"), key=java_key)
     static = sorted(p for p in resources.rglob("*") if p.is_file() and p.suffix in (".html", ".js", ".css"))
-    files += sorted(static, key=lambda p: (p.suffix != ".html", p.name))
+    files += sorted(static, key=lambda p: (p.suffix != ".html", p.name == "i18n.js", p.name))
     files += sorted((base / "src/test/java").rglob("*.java")) if (base / "src/test/java").exists() else []
     if only:
         files = [f for f in files if any(part in str(f) for part in only)]
@@ -44,6 +46,7 @@ LABS = {
     "lab1": [
         ("Сборка проекта", [ROOT / "pom.xml"]),
         ("Общие ресурсы web-клиентов (ui-kit)", module_files("ui-kit")),
+        ("Локализация (bank-common, пакет i18n)", module_files("bank-common", only=["/i18n/", "common-messages"])),
         ("Микросервис «Клиенты» (client-service)", module_files("client-service")),
     ],
     "lab2": [
@@ -58,7 +61,7 @@ LABS = {
         ("Эмулятор банкомата (atm-service)", module_files("atm-service")),
         ("Банковская сторона протокола (credit-service)", module_files("credit-service", only=[
             "/atm/", "AtmController", "domain/Card", "CardService", "domain/Mobile", "PinEnvelope",
-            "AtmProtocolIT", "CardNumbersTest"])),
+            "DemoCards", "DemoProperties", "application.yml", "messages", "AtmProtocolIT", "CardNumbersTest"])),
         ("Запуск сервисов", [ROOT / "scripts/run-all.sh", ROOT / "scripts/stop-all.sh"]),
     ],
 }

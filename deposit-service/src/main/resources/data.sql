@@ -1,12 +1,23 @@
--- Депозитные программы банка «Решение» (вариант 4): условия приближены к действующим на rbank.by
-insert into deposit_product (name, kind, currency, rate, min_amount, min_term_months, max_term_months, description)
-values ('Свободное накопление', 'REVOCABLE', 'BYN', 7.00, 100.00, 1, 12,
-        'Отзывный вклад до востребования, проценты выплачиваются ежемесячно'),
-       ('Online-решение', 'IRREVOCABLE', 'BYN', 12.90, 500.00, 3, 13,
-        'Срочный безотзывный вклад, проценты выплачиваются в конце срока'),
-       ('Свободное накопление', 'REVOCABLE', 'USD', 1.50, 100.00, 1, 12,
-        'Отзывный вклад до востребования, проценты выплачиваются ежемесячно'),
-       ('Online-решение', 'IRREVOCABLE', 'USD', 3.00, 500.00, 3, 13,
-        'Срочный безотзывный вклад, проценты выплачиваются в конце срока'),
-       ('Online-решение', 'IRREVOCABLE', 'EUR', 2.00, 500.00, 3, 13,
-        'Срочный безотзывный вклад, проценты выплачиваются в конце срока');
+-- Депозитные программы по образцу банка «Решение» (вариант 4): условия приближены к действующим на rbank.by
+insert into deposit_product (name, name_en, name_be, kind, currency, rate, min_amount, min_term_months, max_term_months,
+                             description, description_en, description_be)
+values ('Свободное накопление', 'Free Savings', 'Свабоднае накапленне', 'REVOCABLE', 'BYN', 7.00, 100.00, 1, 12,
+        'Отзывный вклад до востребования, проценты выплачиваются ежемесячно',
+        'Revocable demand deposit, interest is paid monthly',
+        'Адзыўны ўклад да запатрабавання, працэнты выплачваюцца штомесяц'),
+       ('Online-решение', 'Online-reshenie', 'Online-рашэнне', 'IRREVOCABLE', 'BYN', 12.90, 500.00, 3, 13,
+        'Срочный безотзывный вклад, проценты выплачиваются в конце срока',
+        'Fixed-term irrevocable deposit, interest is paid at the end of the term',
+        'Тэрміновы безадзыўны ўклад, працэнты выплачваюцца ў канцы тэрміну'),
+       ('Свободное накопление', 'Free Savings', 'Свабоднае накапленне', 'REVOCABLE', 'USD', 1.50, 100.00, 1, 12,
+        'Отзывный вклад до востребования, проценты выплачиваются ежемесячно',
+        'Revocable demand deposit, interest is paid monthly',
+        'Адзыўны ўклад да запатрабавання, працэнты выплачваюцца штомесяц'),
+       ('Online-решение', 'Online-reshenie', 'Online-рашэнне', 'IRREVOCABLE', 'USD', 3.00, 500.00, 3, 13,
+        'Срочный безотзывный вклад, проценты выплачиваются в конце срока',
+        'Fixed-term irrevocable deposit, interest is paid at the end of the term',
+        'Тэрміновы безадзыўны ўклад, працэнты выплачваюцца ў канцы тэрміну'),
+       ('Online-решение', 'Online-reshenie', 'Online-рашэнне', 'IRREVOCABLE', 'EUR', 2.00, 500.00, 3, 13,
+        'Срочный безотзывный вклад, проценты выплачиваются в конце срока',
+        'Fixed-term irrevocable deposit, interest is paid at the end of the term',
+        'Тэрміновы безадзыўны ўклад, працэнты выплачваюцца ў канцы тэрміну');

@@ -5,6 +5,7 @@ import by.bsuir.bank.account.domain.BankDay;
 import by.bsuir.bank.account.dto.DayCloseResult;
 import by.bsuir.bank.account.repository.BankDayRepository;
 import by.bsuir.bank.common.api.BankException;
+import by.bsuir.bank.common.i18n.Messages;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -36,16 +37,21 @@ public class BankDayService {
     private final DayCloseNotifier notifier;
     private final ReentrantLock closing = new ReentrantLock();
 
+    /** Название участника на языке запроса: в настройках задан его ключ (deposits, credits). */
+    private static String title(BankProperties.Participant participant) {
+        return Messages.get("participant." + participant.name());
+    }
+
     public LocalDate current() {
         return days.findById(BankDay.ID).orElseThrow().getBankDate();
     }
 
     public DayCloseResult close(int count) {
         if (count < 1 || count > MAX_DAYS) {
-            throw BankException.invalid("Количество дней должно быть от 1 до " + MAX_DAYS);
+            throw BankException.invalid(Messages.get("day.range", MAX_DAYS));
         }
         if (!closing.tryLock()) {
-            throw new BankException(HttpStatus.CONFLICT, "DAY_CLOSE_IN_PROGRESS", "Закрытие дня уже выполняется");
+            throw new BankException(HttpStatus.CONFLICT, "DAY_CLOSE_IN_PROGRESS", Messages.get("day.inProgress"));
         }
         try {
             List<String> events = new ArrayList<>();
@@ -73,10 +79,10 @@ public class BankDayService {
             return notifier.dayOpened(participant.url(), date);
         } catch (ResourceAccessException e) {
             log.warn("Сервис «{}» недоступен, день {} обработан без него", participant.name(), date);
-            return List.of(RU_DATE.format(date) + ": сервис «" + participant.name() + "» недоступен, обработка отложена");
+            return List.of(Messages.get("day.participantUnavailable", RU_DATE.format(date), title(participant)));
         } catch (RestClientException e) {
             throw new BankException(HttpStatus.BAD_GATEWAY, "DAY_CLOSE_FAILED",
-                    "Сервис «" + participant.name() + "» не обработал день " + RU_DATE.format(date) + ", день не закрыт");
+                    Messages.get("day.participantFailed", title(participant), RU_DATE.format(date)));
         }
     }
 }

@@ -2,6 +2,7 @@ package by.bsuir.bank.account.dto;
 
 import by.bsuir.bank.account.domain.Operation;
 import by.bsuir.bank.account.domain.Side;
+import by.bsuir.bank.common.i18n.Localized;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,9 +20,10 @@ public record OperationView(
     }
 
     public static OperationView from(Operation o) {
-        return new OperationView(o.getId(), o.getBankDate(), o.getDescription(), o.getContractRef(),
+        // название операции и наименование счёта банка хранятся кодом и раскрываются на языке запроса
+        return new OperationView(o.getId(), o.getBankDate(), Localized.render(o.getDescription()), o.getContractRef(),
                 o.getEntries().stream()
-                        .map(e -> new EntryView(e.getAccount().getNumber(), e.getAccount().getName(),
+                        .map(e -> new EntryView(e.getAccount().getNumber(), Localized.render(e.getAccount().getName()),
                                 e.getAccount().getChart().getCode(), e.getSide(), e.getAmount()))
                         .toList());
     }

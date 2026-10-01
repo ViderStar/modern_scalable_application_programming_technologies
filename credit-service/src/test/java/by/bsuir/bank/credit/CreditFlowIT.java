@@ -40,7 +40,8 @@ import static org.mockito.Mockito.when;
  * Интеграционные тесты кредитного процесса: сервис, база H2 и главная книга в памяти.
  * Обороты счетов сверяются со схемой проводок «Кредитная программа» из задания.
  */
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:${random.uuid};DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:${random.uuid};DB_CLOSE_DELAY=-1",
+        "bank.demo.enabled=false"})
 @Import(TestLedgerConfig.class)
 class CreditFlowIT {
 

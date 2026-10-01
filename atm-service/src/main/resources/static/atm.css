@@ -85,3 +85,16 @@
 .inspector .mono-list .name { color: #1d5fa8; display: inline-block; min-width: 92px; }
 .inspector pre { margin: 6px 0 0; font: 12px/1.5 "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
 .inspector .state { font: 600 13px "SF Mono", Menlo, Consolas, monospace; }
+
+/* Демо-карты: подсказка для знакомства с банкоматом */
+.demo-card {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px;
+  background: linear-gradient(135deg, #f7faff, #eaf1fb);
+}
+.demo-card.blocked { background: #f6f6f7; opacity: .75; }
+.demo-number { font: 600 13.5px "SF Mono", Menlo, Consolas, monospace; letter-spacing: .5px; }
+.demo-holder { font-size: 12.5px; color: var(--muted); }
+.demo-pin { display: flex; flex-direction: column; align-items: flex-end; font-size: 12.5px; }
+.demo-pin b { font: 600 15px "SF Mono", Menlo, Consolas, monospace; }
+.demo-number { white-space: nowrap; }

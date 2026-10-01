@@ -84,6 +84,12 @@ class Browser:
         self.driver.quit()
 
 
+def set_lang(b, code):
+    """Переключение языка интерфейса кнопкой в шапке: страница перезагружается."""
+    b.click(f"lang-{code}")
+    time.sleep(1.2)
+
+
 def rest(method, url, body=None):
     data = None if body is None else json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
@@ -116,6 +122,10 @@ NEW_CLIENT_SELECTS = {
     "residenceCityId": "Минск", "registrationCityId": "Борисов", "maritalStatusId": "Женат",
     "citizenshipId": "Республика Беларусь", "disabilityId": "Нет",
 }
+# позиции тех же значений в списках (города отсортированы по алфавиту на русском и белорусском одинаково)
+NEW_CLIENT_SELECT_INDEX = {
+    "residenceCityId": 7, "registrationCityId": 2, "maritalStatusId": 2, "citizenshipId": 1, "disabilityId": 1,
+}
 
 
 def fill_client(b, overrides=None):
@@ -123,8 +133,10 @@ def fill_client(b, overrides=None):
     for field, value in values.items():
         b.type(f"f-{field}", value)
     b.el("f-sex-M").click()
-    for field, value in NEW_CLIENT_SELECTS.items():
-        b.choose(f"f-{field}", value)
+    for field in NEW_CLIENT_SELECTS:
+        select = Select(b.el(f"f-{field}"))
+        select.select_by_index(NEW_CLIENT_SELECT_INDEX[field])       # по номеру: подписи зависят от языка
+        time.sleep(0.1)
 
 
 def lab1(b):
@@ -152,6 +164,17 @@ def lab1(b):
     b.click("btn-save")
     b.wait_text("notice", "Клиент добавлен")
     b.shot("list_added")
+
+    # тот же интерфейс на английском и белорусском языках
+    set_lang(b, "en")
+    b.shot("list_en")
+    set_lang(b, "be")
+    b.click("btn-add")
+    fill_client(b, {"lastName": "1234", "birthDate": "31.02.2015", "passportNumber": "3141592",
+                    "identificationNumber": "3140301A001PB5"})
+    b.click("btn-save")
+    b.shot("form_be", height=760)
+    set_lang(b, "ru")
 
     # проверка «прямо в базе» через консоль H2
     b.driver.set_window_size(WIDTH, 640)
@@ -189,7 +212,7 @@ def lab2(b):
     b.folder = ROOT / "reports" / "lab2" / "img"
     b.open(ACCOUNTS)
     b.shot("accounts_start")
-    b.driver.find_element(By.XPATH, "//button[normalize-space()='План счетов']").click()
+    b.click("tab-chart")
     b.shot("chart")
 
     b.open(DEPOSITS)
@@ -218,8 +241,13 @@ def lab2(b):
     b.click("btn-close-days")
     b.wait_text("events", "выплачены проценты")
     b.shot("report_month")
-    b.driver.find_element(By.XPATH, "//button[normalize-space()='Журнал проводок']").click()
+    b.click("tab-journal")
     b.shot("journal", height=1100)
+    # журнал хранит коды операций, поэтому те же проводки читаются на другом языке
+    set_lang(b, "en")
+    b.click("tab-journal")
+    b.shot("journal_en", height=760)
+    set_lang(b, "ru")
 
     b.open(DEPOSITS)
     b.driver.find_element(By.LINK_TEXT, "Д-000001").click()
@@ -322,19 +350,38 @@ def atm_shot(b, name):
     b.shot(name)
 
 
+def demo_cards():
+    """Демо-карты банк выпускает в фоне после старта — ждём, пока появятся все три."""
+    for _ in range(40):
+        cards = rest("GET", f"{ATM}/api/demo-cards")
+        if len(cards) == 3:
+            return cards
+        time.sleep(2)
+    raise RuntimeError("Демо-карты не выпущены")
+
+
+def atm_login(b, index, pin):
+    b.click(f"demo-insert-{index}")
+    b.click("key-enter")
+    atm_state(b, "PIN")
+    atm_keys(b, pin)
+    b.click("key-enter")
+    atm_state(b, "MENU")
+
+
 def lab4(b):
     b.folder = ROOT / "reports" / "lab4" / "img"
     b.folder.mkdir(parents=True, exist_ok=True)
-    today = bank_date()
-    issued = rest("POST", f"{CREDITS}/api/credits", {
-        "number": "К-000009", "productId": 1, "currency": "BYN", "clientId": 1, "amount": 3000, "rate": 17.65,
-        "termMonths": 12, "startDate": today, "endDate": add_months(today, 12)})
-    card, pin = issued["card"]["cardNumber"], issued["card"]["pin"]
-    wrong = "0000" if pin != "0000" else "1111"
+    cards = demo_cards()
+    seed_deposits()                                    # вклад держателя первой карты — для запроса остатка депозита
+    pin = cards[0]["pin"]
+    wrong = "0000"
 
     b.open(ATM)
     atm_state(b, "INSERT_CARD")
-    atm_keys(b, card)
+    b.wait.until(EC.presence_of_element_located((By.ID, "demo-insert-2")))
+    atm_shot(b, "demo_cards")
+    b.click("demo-insert-0")                           # «вставить» демо-карту: номер подставлен в поле ввода
     atm_shot(b, "insert_card")
     b.click("key-enter")
     atm_state(b, "PIN")
@@ -419,8 +466,8 @@ def lab4(b):
     atm_state(b, "INSERT_CARD")
     atm_shot(b, "ejected")
 
-    # три неверных PIN-кода подряд — карта блокируется банком
-    atm_keys(b, card)
+    # три неверных PIN-кода подряд — третья демо-карта блокируется банком
+    b.click("demo-insert-2")
     b.click("key-enter")
     atm_state(b, "PIN")
     for _ in range(3):
@@ -428,10 +475,31 @@ def lab4(b):
         b.click("key-enter")
         time.sleep(1.2)
     atm_state(b, "INSERT_CARD")
+    time.sleep(1.0)
     atm_shot(b, "blocked")
 
+    # тот же банкомат на английском и белорусском: экран и чек формирует сервис на языке клиента
+    set_lang(b, "en")
+    atm_state(b, "INSERT_CARD")
+    b.wait.until(EC.presence_of_element_located((By.ID, "demo-insert-1")))
+    atm_login(b, 1, cards[1]["pin"])
+    atm_shot(b, "lang_en")
+    set_lang(b, "be")
+    atm_state(b, "INSERT_CARD")
+    b.wait.until(EC.presence_of_element_located((By.ID, "demo-insert-1")))
+    atm_login(b, 1, cards[1]["pin"])
+    b.click("opt-WITHDRAW")
+    atm_state(b, "AMOUNT")
+    atm_keys(b, "100")
+    b.click("key-enter")
+    atm_state(b, "RECEIPT_PROMPT")
+    b.click("opt-YES")
+    atm_state(b, "MENU")
+    atm_shot(b, "lang_be")
+    set_lang(b, "ru")
+
     b.open(CREDITS)
-    b.driver.find_element(By.LINK_TEXT, "К-000009").click()
+    b.driver.find_element(By.LINK_TEXT, cards[0]["contract"]).click()
     time.sleep(0.6)
     b.shot("bank_side", height=1500)
     b.open(ACCOUNTS)

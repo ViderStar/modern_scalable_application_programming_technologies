@@ -1,6 +1,6 @@
 /* Web-клиент сервиса депозитов: список договоров, форма заключения договора, карточка договора. */
 
-const REQUIRED = 'Обязательное поле';
+const t = Bank.t;
 
 /* Дата окончания: как LocalDate.plusMonths — день месяца сохраняется либо прижимается к концу месяца. */
 function addMonths(iso, months) {
@@ -11,7 +11,7 @@ function addMonths(iso, months) {
   return first.getFullYear() + '-' + pad(first.getMonth() + 1) + '-' + pad(Math.min(day, lastDay));
 }
 
-const app = Vue.createApp({
+const app = Bank.createApp({
   data() {
     return {
       view: 'list',            // list | form | details
@@ -72,25 +72,25 @@ const app = Vue.createApp({
     validate() {
       const errors = {};
       const form = this.form;
-      if (!form.clientId) errors.clientId = REQUIRED;
-      if (!form.productId) errors.productId = REQUIRED;
-      if (!form.number) errors.number = REQUIRED;
-      else if (!/^Д-\d{6}$/.test(form.number)) errors.number = 'Формат номера договора: Д-000001';
+      if (!form.clientId) errors.clientId = t('common.required');
+      if (!form.productId) errors.productId = t('common.required');
+      if (!form.number) errors.number = t('common.required');
+      else if (!/^Д-\d{6}$/.test(form.number)) errors.number = t('deposits.numberFormat');
       const amount = String(form.amount).trim().replace(',', '.');
-      if (!amount) errors.amount = REQUIRED;
-      else if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) errors.amount = 'Денежная сумма: только цифры и не более 2 знаков после запятой';
+      if (!amount) errors.amount = t('common.required');
+      else if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount)) errors.amount = t('contract.moneyFormat');
       else if (this.product && Number(amount) < this.product.minAmount)
-        errors.amount = 'Минимальная сумма вклада — ' + Bank.money(this.product.minAmount) + ' ' + this.product.currency;
+        errors.amount = t('deposits.minAmount', Bank.money(this.product.minAmount), this.product.currency);
       const term = String(form.termMonths).trim();
-      if (!term) errors.termMonths = REQUIRED;
-      else if (!/^\d{1,3}$/.test(term)) errors.termMonths = 'Срок — целое число месяцев';
+      if (!term) errors.termMonths = t('common.required');
+      else if (!/^\d{1,3}$/.test(term)) errors.termMonths = t('contract.termInteger');
       else if (this.product && (Number(term) < this.product.minTermMonths || Number(term) > this.product.maxTermMonths))
-        errors.termMonths = 'Срок по программе: от ' + this.product.minTermMonths + ' до ' + this.product.maxTermMonths + ' мес.';
+        errors.termMonths = t('contract.termRange', this.product.minTermMonths, this.product.maxTermMonths);
       return errors;
     },
     async save() {
       this.errors = this.validate();
-      this.formError = Object.keys(this.errors).length ? 'Форма заполнена с ошибками — исправьте отмеченные поля' : '';
+      this.formError = Object.keys(this.errors).length ? t('common.formErrors') : '';
       if (this.formError) return;
       this.saving = true;
       try {
@@ -107,7 +107,7 @@ const app = Vue.createApp({
         });
         await this.reload();
         await this.openDetails(created.id);
-        this.notice = 'Договор ' + created.number + ' заключён, открыты счета ' + created.mainAccount + ' и ' + created.interestAccount;
+        this.notice = t('deposits.opened', created.number, created.mainAccount, created.interestAccount);
       } catch (e) {
         this.errors = e.fields;
         this.formError = e.message;
@@ -127,12 +127,12 @@ const app = Vue.createApp({
     },
     async withdraw() {
       const contract = this.details.contract;
-      if (!confirm('Отозвать вклад по договору ' + contract.number + '?')) return;
+      if (!confirm(t('deposits.confirmWithdraw', contract.number))) return;
       try {
         await Bank.api('POST', '/api/deposits/' + contract.id + '/withdraw');
         await this.reload();
         await this.openDetails(contract.id);
-        this.notice = 'Вклад возвращён клиенту, договор закрыт';
+        this.notice = t('deposits.withdrawn');
       } catch (e) {
         this.error = e.message;
       }
@@ -161,8 +161,8 @@ const app = Vue.createApp({
     <main>
       <div class="toolbar">
         <div>
-          <h1>Депозитные договоры</h1>
-          <p class="subtitle">Вклады физических лиц: заключение договора, начисление и выплата процентов</p>
+          <h1>{{ t('deposits.title') }}</h1>
+          <p class="subtitle">{{ t('deposits.subtitle') }}</p>
         </div>
         <bank-day @changed="dayClosed" @failed="e => error = e.message"></bank-day>
       </div>
@@ -170,22 +170,24 @@ const app = Vue.createApp({
       <div v-if="error" id="error" class="alert error">{{ error }}</div>
       <div v-if="notice" id="notice" class="alert success">{{ notice }}</div>
       <div v-if="events.length" id="events" class="alert info">
-        <b>Протокол закрытия дня</b>
+        <b>{{ t('events.title') }}</b>
         <div v-for="(event, i) in events.slice(-8)" :key="i">{{ event }}</div>
-        <div v-if="events.length > 8" class="muted">… всего записей: {{ events.length }}</div>
+        <div v-if="events.length > 8" class="muted">{{ t('events.more', events.length) }}</div>
       </div>
 
       <section v-if="view === 'list'">
         <div class="toolbar">
-          <span class="muted">Договоров: {{ deposits.length }}</span>
-          <button id="btn-add" class="primary" @click="openForm">Заключить договор</button>
+          <span class="muted">{{ t('contract.count', deposits.length) }}</span>
+          <button id="btn-add" class="primary" @click="openForm">{{ t('contract.conclude') }}</button>
         </div>
         <div class="card">
           <table id="deposits">
             <thead>
               <tr>
-                <th>Договор</th><th>Клиент</th><th>Вид депозита</th><th class="num">Сумма</th><th class="num">Ставка</th>
-                <th>Начало</th><th>Окончание</th><th class="num">Начислено</th><th class="num">Выплачено</th><th>Статус</th>
+                <th>{{ t('table.contract') }}</th><th>{{ t('contract.client') }}</th><th>{{ t('deposits.kind') }}</th>
+                <th class="num">{{ t('contract.sum') }}</th><th class="num">{{ t('contract.rate') }}</th>
+                <th>{{ t('contract.start') }}</th><th>{{ t('contract.end') }}</th><th class="num">{{ t('deposits.accrued') }}</th>
+                <th class="num">{{ t('deposits.paid') }}</th><th>{{ t('contract.status') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -199,112 +201,113 @@ const app = Vue.createApp({
                 <td>{{ date(d.endDate) }}</td>
                 <td class="num">{{ money(d.accrued) }}</td>
                 <td class="num">{{ money(d.paid) }}</td>
-                <td><span class="badge" :class="d.status === 'ACTIVE' ? 'ok' : 'off'">{{ d.status === 'ACTIVE' ? 'Действует' : 'Закрыт' }}</span></td>
+                <td><span class="badge" :class="d.status === 'ACTIVE' ? 'ok' : 'off'">{{ d.status === 'ACTIVE' ? t('contract.active') : t('deposits.closed') }}</span></td>
               </tr>
             </tbody>
           </table>
-          <div v-if="!deposits.length" class="empty">Договоров пока нет</div>
+          <div v-if="!deposits.length" class="empty">{{ t('contract.none') }}</div>
         </div>
       </section>
 
       <section v-if="view === 'form'">
-        <h2>Новый депозитный договор</h2>
+        <h2>{{ t('deposits.new') }}</h2>
         <div v-if="formError" id="form-alert" class="alert error">{{ formError }}</div>
         <form class="card" novalidate @submit.prevent="save">
           <div class="form-grid">
             <div class="field wide" :class="{ invalid: errors.clientId }">
-              <label for="f-clientId">Клиент <span class="req">*</span></label>
+              <label for="f-clientId">{{ t('contract.client') }} <span class="req">*</span></label>
               <select id="f-clientId" v-model="form.clientId">
-                <option :value="null">— выберите клиента —</option>
+                <option :value="null">{{ t('contract.chooseClient') }}</option>
                 <option v-for="c in clients" :key="c.id" :value="c.id">
-                  {{ c.fullName }} (паспорт {{ c.passportSeries }} {{ c.passportNumber }})
+                  {{ c.fullName }} ({{ t('contract.passport') }} {{ c.passportSeries }} {{ c.passportNumber }})
                 </option>
               </select>
               <div v-if="errors.clientId" class="error" id="e-clientId">{{ errors.clientId }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.number }">
-              <label for="f-number">Номер договора <span class="req">*</span></label>
+              <label for="f-number">{{ t('contract.number') }} <span class="req">*</span></label>
               <input id="f-number" type="text" v-model="form.number" v-mask="'Д-######'" placeholder="Д-000001">
               <div v-if="errors.number" class="error" id="e-number">{{ errors.number }}</div>
             </div>
 
             <div class="field">
-              <label for="f-currency">Валюта <span class="req">*</span></label>
+              <label for="f-currency">{{ t('contract.currency') }} <span class="req">*</span></label>
               <select id="f-currency" v-model="form.currency">
                 <option v-for="c in meta.currencies" :key="c.code" :value="c.code">{{ c.code }} — {{ c.name }}</option>
               </select>
             </div>
             <div class="field wide" :class="{ invalid: errors.productId }">
-              <label for="f-productId">Вид депозита <span class="req">*</span></label>
+              <label for="f-productId">{{ t('deposits.kind') }} <span class="req">*</span></label>
               <select id="f-productId" v-model="form.productId">
-                <option :value="null">— выберите программу —</option>
+                <option :value="null">{{ t('contract.chooseProduct') }}</option>
                 <option v-for="p in availableProducts" :key="p.id" :value="p.id">
-                  «{{ p.name }}» — {{ p.kindTitle.toLowerCase() }}, {{ p.rate }} % годовых
+                  {{ t('deposits.option', p.name, p.kindTitle.toLowerCase(), p.rate) }}
                 </option>
               </select>
               <div v-if="errors.productId" class="error" id="e-productId">{{ errors.productId }}</div>
-              <div v-else-if="product" class="hint">{{ product.description }}. Сумма от {{ money(product.minAmount) }} {{ product.currency }},
-                срок {{ product.minTermMonths }}–{{ product.maxTermMonths }} мес.</div>
+              <div v-else-if="product" class="hint">{{ t('deposits.hint', product.description, money(product.minAmount),
+                product.currency, product.minTermMonths, product.maxTermMonths) }}</div>
             </div>
 
             <div class="field" :class="{ invalid: errors.amount }">
-              <label for="f-amount">Сумма вклада, {{ form.currency }} <span class="req">*</span></label>
+              <label for="f-amount">{{ t('deposits.amount', form.currency) }} <span class="req">*</span></label>
               <input id="f-amount" type="text" v-model="form.amount" placeholder="0.00">
               <div v-if="errors.amount" class="error" id="e-amount">{{ errors.amount }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.termMonths }">
-              <label for="f-termMonths">Срок договора, мес. <span class="req">*</span></label>
+              <label for="f-termMonths">{{ t('contract.term') }} <span class="req">*</span></label>
               <input id="f-termMonths" type="text" v-model="form.termMonths" v-mask="'###'">
               <div v-if="errors.termMonths" class="error" id="e-termMonths">{{ errors.termMonths }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.rate }">
-              <label for="f-rate">Процент по вкладу, % годовых</label>
+              <label for="f-rate">{{ t('deposits.rate') }}</label>
               <input id="f-rate" type="text" :value="product ? product.rate : ''" readonly>
               <div v-if="errors.rate" class="error" id="e-rate">{{ errors.rate }}</div>
             </div>
 
             <div class="field" :class="{ invalid: errors.startDate }">
-              <label for="f-startDate">Дата начала</label>
+              <label for="f-startDate">{{ t('contract.startDate') }}</label>
               <input id="f-startDate" type="text" :value="date(meta.bankDate)" readonly>
               <div v-if="errors.startDate" class="error" id="e-startDate">{{ errors.startDate }}</div>
             </div>
             <div class="field" :class="{ invalid: errors.endDate }">
-              <label for="f-endDate">Дата окончания</label>
+              <label for="f-endDate">{{ t('contract.endDate') }}</label>
               <input id="f-endDate" type="text" :value="date(endDate)" readonly>
               <div v-if="errors.endDate" class="error" id="e-endDate">{{ errors.endDate }}</div>
             </div>
           </div>
           <div class="form-actions" style="margin-top: 18px">
-            <button id="btn-save" type="submit" class="primary" :disabled="saving">Заключить договор</button>
-            <button id="btn-cancel" type="button" @click="view = 'list'">Отмена</button>
+            <button id="btn-save" type="submit" class="primary" :disabled="saving">{{ t('contract.conclude') }}</button>
+            <button id="btn-cancel" type="button" @click="view = 'list'">{{ t('common.cancel') }}</button>
           </div>
         </form>
       </section>
 
       <section v-if="view === 'details' && details">
         <div class="toolbar">
-          <h2>Договор {{ details.contract.number }} · {{ details.contract.clientName }}</h2>
+          <h2>{{ t('deposits.contract', details.contract.number, details.contract.clientName) }}</h2>
           <div style="display: flex; gap: 8px">
             <button v-if="details.contract.status === 'ACTIVE' && details.contract.kind === 'REVOCABLE'"
-                    id="btn-withdraw" class="danger" @click="withdraw">Отозвать вклад</button>
-            <button id="btn-back" @click="toList">К списку</button>
+                    id="btn-withdraw" class="danger" @click="withdraw">{{ t('deposits.withdraw') }}</button>
+            <button id="btn-back" @click="toList">{{ t('common.toList') }}</button>
           </div>
         </div>
         <div class="card details">
-          <div><div class="label">Вид депозита</div><div class="value">«{{ details.contract.productName }}»</div><div class="muted">{{ details.contract.kindTitle }}</div></div>
-          <div><div class="label">Сумма вклада</div><div class="value">{{ money(details.contract.amount) }} {{ details.contract.currency }}</div></div>
-          <div><div class="label">Ставка</div><div class="value">{{ details.contract.rate }} % годовых</div></div>
-          <div><div class="label">Статус</div><div class="value">{{ details.contract.status === 'ACTIVE' ? 'Действует' : 'Закрыт ' + date(details.contract.closedOn) }}</div></div>
-          <div><div class="label">Срок</div><div class="value">{{ details.contract.termMonths }} мес.</div></div>
-          <div><div class="label">Период</div><div class="value">{{ date(details.contract.startDate) }} — {{ date(details.contract.endDate) }}</div></div>
-          <div><div class="label">Начислено процентов</div><div class="value">{{ money(details.contract.accrued) }} {{ details.contract.currency }}</div></div>
-          <div><div class="label">Выплачено процентов</div><div class="value">{{ money(details.contract.paid) }} {{ details.contract.currency }}</div></div>
+          <div><div class="label">{{ t('deposits.kind') }}</div><div class="value">«{{ details.contract.productName }}»</div><div class="muted">{{ details.contract.kindTitle }}</div></div>
+          <div><div class="label">{{ t('deposits.amountShort') }}</div><div class="value">{{ money(details.contract.amount) }} {{ details.contract.currency }}</div></div>
+          <div><div class="label">{{ t('contract.rate') }}</div><div class="value">{{ details.contract.rate }} {{ t('contract.perAnnum') }}</div></div>
+          <div><div class="label">{{ t('contract.status') }}</div><div class="value">{{ details.contract.status === 'ACTIVE' ? t('contract.active') : t('deposits.closedOn', date(details.contract.closedOn)) }}</div></div>
+          <div><div class="label">{{ t('contract.termShort') }}</div><div class="value">{{ details.contract.termMonths }} {{ t('contract.months') }}</div></div>
+          <div><div class="label">{{ t('contract.period') }}</div><div class="value">{{ date(details.contract.startDate) }} — {{ date(details.contract.endDate) }}</div></div>
+          <div><div class="label">{{ t('deposits.accruedInterest') }}</div><div class="value">{{ money(details.contract.accrued) }} {{ details.contract.currency }}</div></div>
+          <div><div class="label">{{ t('deposits.paidInterest') }}</div><div class="value">{{ money(details.contract.paid) }} {{ details.contract.currency }}</div></div>
         </div>
 
         <div class="card">
-          <h2>Счета договора</h2>
+          <h2>{{ t('contract.accounts') }}</h2>
           <table id="contract-accounts">
-            <thead><tr><th>Номер счёта</th><th>Код</th><th>Назначение</th><th>Активность</th><th class="num">Дебет</th><th class="num">Кредит</th><th class="num">Сальдо</th></tr></thead>
+            <thead><tr><th>{{ t('table.account') }}</th><th>{{ t('table.code') }}</th><th>{{ t('table.purpose') }}</th><th>{{ t('table.activity') }}</th>
+                <th class="num">{{ t('table.debit') }}</th><th class="num">{{ t('table.credit') }}</th><th class="num">{{ t('table.balance') }}</th></tr></thead>
             <tbody>
               <tr v-for="a in details.accounts" :key="a.number">
                 <td class="mono">{{ a.number }}</td>
@@ -320,9 +323,10 @@ const app = Vue.createApp({
         </div>
 
         <div class="card">
-          <h2>Проводки по договору</h2>
+          <h2>{{ t('contract.postings') }}</h2>
           <table id="contract-operations">
-            <thead><tr><th>Дата</th><th>Операция</th><th>Счёт</th><th class="num">Дебет</th><th class="num">Кредит</th></tr></thead>
+            <thead><tr><th>{{ t('table.date') }}</th><th>{{ t('table.operation') }}</th><th>{{ t('table.accountShort') }}</th>
+                <th class="num">{{ t('table.debit') }}</th><th class="num">{{ t('table.credit') }}</th></tr></thead>
             <tbody>
               <template v-for="op in details.operations" :key="op.id">
                 <tr v-for="(entry, i) in op.entries" :key="op.id + '-' + i">
@@ -338,9 +342,6 @@ const app = Vue.createApp({
         </div>
       </section>
     </main>`,
-});
+}, 'deposits.page');
 
-app.component('bank-nav', Bank.navComponent);
-app.component('bank-day', Bank.dayComponent);
-app.directive('mask', Bank.maskDirective);
 app.mount('#app');

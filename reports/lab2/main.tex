@@ -20,9 +20,11 @@
 Вариант №\,4 соответствует банку <<Решение>> в списке банков Республики Беларусь
 (\url{https://select.by/banki}). Для него выбраны две депозитные программы для физических
 лиц (таблица~\ref{tab:products}); условия приближены к действующим предложениям банка.
+Сам условный банк в учебной системе называется BankEt: программы банка <<Решение>> служат
+образцом для его справочника видов депозита.
 
 \begin{table}[H]
-\caption{Депозитные программы банка <<Решение>>}
+\caption{Депозитные программы по образцу банка <<Решение>>}
 \label{tab:products}
 \centering
 \small
@@ -103,8 +105,9 @@
 
 Сервисы общаются синхронно по REST. Клиенты смежных сервисов описаны декларативными
 интерфейсами Spring (\texttt{@HttpExchange}) в общей библиотеке \texttt{bank-common}; там же
-находится единый формат ошибки, который позволяет передать сообщение главной книги через
-сервис депозитов до web-клиента без искажений.
+находятся единый формат ошибки, который позволяет передать сообщение главной книги через
+сервис депозитов до web-клиента без искажений, и локализация --- сервисы отвечают на
+русском, английском или белорусском языке.
 
 \subsection{План счетов и номер счёта}
 
@@ -154,13 +157,13 @@ k = \Bigl(3 \sum_{i=1}^{12} d_i w_i\Bigr) \bmod 10,
 \centering
 \begin{tikzpicture}
 \node[note, anchor=west] at (0, 0.45) {\textit{account-service}};
-\node[entity, text width=3.6cm, anchor=north west] (chart) at (0, 0) {\textbf{chart\_of\_accounts}\nodepart{two} code \hfill PK\\ name\\ activity};
+\node[entity, text width=3.6cm, anchor=north west] (chart) at (0, 0) {\textbf{chart\_of\_accounts}\nodepart{two} code \hfill PK\\ name, name\_en, name\_be\\ activity};
 \node[entity, text width=4.3cm, anchor=north west] (account) at (5.0, 0) {\textbf{account}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ chart\_code \hfill FK\\ currency\_code \hfill FK\\ name, contract\_ref\\ owner\_code, owner\_seq \hfill UQ\\ debit, credit, opened\_on};
-\node[entity, text width=3.0cm, anchor=north west] (currency) at (10.7, 0) {\textbf{currency}\nodepart{two} code \hfill PK\\ name};
+\node[entity, text width=3.0cm, anchor=north west] (currency) at (10.7, 0) {\textbf{currency}\nodepart{two} code \hfill PK\\ name, name\_en,\\ name\_be};
 \node[entity, text width=3.6cm, anchor=north west] (entry) at (0, -4.3) {\textbf{operation\_entry}\nodepart{two} id \hfill PK\\ operation\_id \hfill FK\\ account\_id \hfill FK\\ side, amount};
 \node[entity, text width=4.3cm, anchor=north west] (operation) at (5.0, -4.3) {\textbf{operation}\nodepart{two} id \hfill PK\\ batch\_key \hfill FK\\ bank\_date\\ description, contract\_ref};
 \node[entity, text width=3.0cm, anchor=north west] (batch) at (10.7, -4.3) {\textbf{posting\_batch}\nodepart{two} batch\_key \hfill PK\\ created\_at};
-\node[entity, text width=3.0cm, anchor=north west] (day) at (10.7, -1.9) {\textbf{bank\_day}\nodepart{two} id \hfill PK\\ bank\_date};
+\node[entity, text width=3.0cm, anchor=north west] (day) at (10.7, -2.25) {\textbf{bank\_day}\nodepart{two} id \hfill PK\\ bank\_date};
 \draw[flow] (account.west |- chart.east) -- (chart.east);
 \draw[flow] (account.east |- currency.west) -- (currency.west);
 \draw[flow] (entry.east |- operation.west) -- (operation.west);
@@ -168,7 +171,7 @@ k = \Bigl(3 \sum_{i=1}^{12} d_i w_i\Bigr) \bmod 10,
 \draw[flow] (operation.east |- batch.west) -- (batch.west);
 
 \node[note, anchor=west] at (0, -7.35) {\textit{deposit-service}};
-\node[entity, text width=4.4cm, anchor=north west] (product) at (0, -7.8) {\textbf{deposit\_product}\nodepart{two} id \hfill PK\\ name, kind, currency\\ rate, min\_amount\\ min\_term\_months\\ max\_term\_months};
+\node[entity, text width=4.4cm, anchor=north west] (product) at (0, -7.8) {\textbf{deposit\_product}\nodepart{two} id \hfill PK\\ name, name\_en, name\_be\\ kind, currency, rate\\ min\_amount\\ min\_term\_months\\ max\_term\_months\\ description (ru, en, be)};
 \node[entity, text width=7.2cm, anchor=north west] (contract) at (6.5, -7.8) {\textbf{deposit\_contract}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ product\_id \hfill FK\\ client\_id, client\_name \hfill $\to$ client-service\\ currency, amount, rate, term\_months\\ start\_date, end\_date, status\\ main\_account, interest\_account \hfill $\to$ account\\ accrued, paid, paid\_months};
 \draw[flow] (contract.west |- product.east) -- (product.east);
 \end{tikzpicture}
@@ -270,6 +273,55 @@ I(t) = \operatorname{round}\Bigl(\frac{S \cdot r \cdot (t - t_0)}{100 \cdot 365}
 проценты сразу за все пропущенные дни.
 \end{enumerate}
 
+\subsection{Локализация в распределённой системе}
+
+Интерфейс системы доступен на трёх языках, и в системе из нескольких сервисов это ставит
+два вопроса, которых нет в отдельном приложении.
+
+\textbf{Как язык доходит до сервиса, к которому пользователь не обращается напрямую.}
+Web-клиент передаёт выбранный язык в заголовке \texttt{Accept-Language}. Каждый сервис,
+обращаясь к смежному, повторяет этот заголовок: перехватчик REST-клиента подставляет язык
+текущего запроса (листинг~\ref{lst:lang}). Поэтому отказ главной книги <<Недостаточно
+средств>> приходит в форму депозитов на языке пользователя, а протокол закрытия дня,
+собранный из ответов участников, написан на одном языке.
+
+\begin{lstlisting}[style=java, caption={Передача языка смежному сервису (\texttt{bank-common}, \texttt{HttpApis})}, label={lst:lang}]
+public static RestClient.Builder withLanguage(RestClient.Builder builder) {
+    return builder.requestInterceptor((request, body, execution) -> {
+        request.getHeaders().setAcceptLanguageAsLocales(List.of(Messages.locale()));
+        return execution.execute(request, body);
+    });
+}
+\end{lstlisting}
+
+\textbf{На каком языке хранить тексты, которые система пишет в базу сама.} Название
+проводки записывается в журнал один раз, а читают журнал пользователи с разными языками.
+Поэтому в главной книге хранится не текст, а код вида \texttt{@posting.deposit.accrual},
+который превращается в текст при чтении (листинг~\ref{lst:localized}). Так же хранятся
+наименования собственных счетов банка: \texttt{@account.cash|BYN}. Счета клиентов названы
+их ФИО --- это данные, и они не переводятся. Переводы справочников (план счетов, валюты,
+виды депозита) хранятся в столбцах \texttt{name\_en} и \texttt{name\_be} рядом с русским
+наименованием.
+
+\begin{lstlisting}[style=java, caption={Раскрытие хранимого кода на языке читающего (\texttt{bank-common}, \texttt{Localized})}, label={lst:localized}]
+public static String code(String key, Object... args) {
+    StringBuilder code = new StringBuilder(MARK).append(key);
+    for (Object arg : args) {
+        code.append(SEPARATOR).append(arg);
+    }
+    return code.toString();
+}
+
+/** Обычный текст (например, ФИО клиента в названии счёта) возвращается как есть. */
+public static String render(String text) {
+    if (text == null || !text.startsWith(MARK)) {
+        return text;
+    }
+    String[] parts = text.substring(MARK.length()).split("\\" + SEPARATOR);
+    return Messages.get(parts[0], (Object[]) Arrays.copyOfRange(parts, 1, parts.length));
+}
+\end{lstlisting}
+
 \subsection{REST-интерфейсы}
 
 Операции двух сервисов приведены в таблице~\ref{tab:rest}.
@@ -315,6 +367,7 @@ POST & \texttt{/api/internal/day-close} & обработка нового бан
 \begin{Verbatim}[fontsize=\footnotesize, frame=single, rulecolor=\color{codeframe}]
 bank-common/                общая библиотека сервисов
   api/                      ApiError, BankException, обработчик ошибок REST
+  i18n/                     Messages, Localized, I18nConfig — локализация
   client/, ledger/          REST-клиенты ClientApi и LedgerApi, записи запросов и ответов
 account-service/            главная книга
   domain/                   Account, ChartAccount, Operation, AccountNumbers, Activity
@@ -355,7 +408,7 @@ public List<OperationView> post(BatchRequest request) {
         Set<Account> touched = new LinkedHashSet<>();
         for (EntryRequest entry : item.entries()) {
             Account account = locked.computeIfAbsent(entry.account(), number -> accounts.findByNumberForUpdate(number)
-                    .orElseThrow(() -> BankException.notFound("Счёт " + number + " не найден")));
+                    .orElseThrow(() -> BankException.notFound(Messages.get("ledger.accountNotFound", number))));
             ...
             account.apply(entry.side(), entry.amount());
             operation.addEntry(account, entry.side(), entry.amount());
@@ -395,24 +448,31 @@ post(key(number, "OPEN"), number, today,
 \end{lstlisting}
 
 Сами проводки собраны в классе \texttt{DepositPostings}, который читается как таблица
-схемы (листинг~\ref{lst:postings}).
+схемы (листинг~\ref{lst:postings}). Название операции передаётся кодом; русский текст
+<<Внесение денег в кассу>> и его переводы находятся в общем словаре.
 
 \begin{lstlisting}[style=java, caption={Проводки приёма вклада и выплаты процентов (\texttt{DepositPostings})}, label={lst:postings}]
 public static List<Posting> open(String cash, String fund, String main, BigDecimal amount) {
     return List.of(
-            Posting.of("Внесение денег в кассу", Entry.debit(cash, amount)),
-            Posting.of("Перевод денег с кассы на текущий счёт", Entry.credit(cash, amount), Entry.credit(main, amount)),
-            Posting.of("Использование денег банком", Entry.debit(main, amount), Entry.credit(fund, amount)));
+            // внесение денег в кассу
+            Posting.of(code("posting.deposit.cashIn"), Entry.debit(cash, amount)),
+            // перевод денег с кассы на текущий счёт
+            Posting.of(code("posting.deposit.toAccount"), Entry.credit(cash, amount), Entry.credit(main, amount)),
+            // использование денег банком
+            Posting.of(code("posting.deposit.toFund"), Entry.debit(main, amount), Entry.credit(fund, amount)));
 }
 
 public static Posting accrual(String fund, String interest, BigDecimal amount) {
-    return Posting.of("Начисление процентов по депозиту", Entry.debit(fund, amount), Entry.credit(interest, amount));
+    // начисление процентов по депозиту
+    return Posting.of(code("posting.deposit.accrual"), Entry.debit(fund, amount), Entry.credit(interest, amount));
 }
 
 public static List<Posting> payout(String cash, String interest, BigDecimal amount) {
     return List.of(
-            Posting.of("Перевод процентов в кассу", Entry.debit(interest, amount), Entry.debit(cash, amount)),
-            Posting.of("Вывод процентов из кассы", Entry.credit(cash, amount)));
+            // перевод процентов в кассу
+            Posting.of(code("posting.deposit.interestToCash"), Entry.debit(interest, amount), Entry.debit(cash, amount)),
+            // вывод процентов из кассы
+            Posting.of(code("posting.deposit.interestOut"), Entry.credit(cash, amount)));
 }
 \end{lstlisting}
 
@@ -480,7 +540,7 @@ if (matured) {
 
 \section{Тестирование}
 
-Сервисы покрыты 69 тестами (таблица~\ref{tab:tests}). Чтобы тестировать сервис депозитов
+Сервисы и общая библиотека покрыты 86 тестами (таблица~\ref{tab:tests}). Чтобы тестировать сервис депозитов
 без запуска соседних микросервисов, смежные сервисы заменяются двойниками: клиент модуля
 <<Клиенты>> --- заглушкой Mockito, а главная книга --- классом \texttt{InMemoryLedger},
 который реализует тот же интерфейс \texttt{LedgerApi} в памяти и соблюдает те же правила
@@ -496,17 +556,22 @@ if (matured) {
 \toprule
 Класс тестов & Тестов & Что проверяется \\
 \midrule
+\multicolumn{3}{l}{\textit{bank-common}} \\
+\texttt{MessagesTest} & 10 & выбор языка, хранимые коды, передача языка между сервисами \\
+\midrule
 \multicolumn{3}{l}{\textit{account-service}} \\
 \texttt{AccountNumbersTest} & 7 & структура номера, контрольный ключ, сальдо по активности \\
 \texttt{LedgerServiceIT} & 8 & счета, обороты, атомарность пакета, идемпотентность \\
 \texttt{BankDayIT} & 6 & закрытие дня, недоступный и отказавший участник, REST \\
+\texttt{LedgerLanguageIT} & 4 & отчёт, журнал и сообщения на трёх языках \\
 \midrule
 \multicolumn{3}{l}{\textit{deposit-service}} \\
 \texttt{InterestCalculatorTest} & 13 & формула процентов, полные месяцы \\
 \texttt{DepositFlowIT} & 7 & проводки по схеме, выплаты, окончание и отзыв вклада \\
 \texttt{DepositApiIT} & 28 & контроль данных договора, ошибки смежных сервисов \\
+\texttt{DepositLanguageIT} & 3 & программы, проверки и протокол дня на трёх языках \\
 \midrule
-Всего & 69 & \\
+Всего & 86 & \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -593,6 +658,13 @@ $5000 \cdot 12{,}9 \cdot 31 / 36500 = 54{,}78$ BYN, и эта сумма ост�
 
 \screenshot[0.95\textwidth]{img/journal.png}{Журнал проводок главной книги}{fig:journal}
 
+Те же проводки после переключения интерфейса на английский язык показаны на
+рисунке~\ref{fig:journal-en}. Названия операций и счетов банка переведены, хотя записи в
+базе не менялись: журнал хранит коды, а текст подставляется при чтении. Счета клиентов
+по-прежнему названы их ФИО.
+
+\screenshot[0.95\textwidth]{img/journal_en.png}{Тот же журнал проводок на английском языке}{fig:journal-en}
+
 После закрытия ещё 61 дня наступает 1 января 2027 года --- дата окончания обоих
 договоров. Вклады возвращены, договоры закрыты (рисунок~\ref{fig:closed}). По отзывному
 вкладу за 92 дня выплачено 176,44 BYN, по срочному --- 162,58 BYN одной суммой. В итоговом
@@ -609,7 +681,7 @@ $1\,000\,000 - 176{,}44 - 162{,}58 = 999\,660{,}98$ BYN.
 В работе реализованы два микросервиса: главная книга банка и сервис депозитных операций.
 Главная книга ведёт справочник <<План счетов>>, открывает лицевые счета с 13-значным
 номером и контрольным ключом, проводит операции атомарными пакетами и формирует отчёт о
-состоянии счетов. Сервис депозитов поддерживает две программы банка <<Решение>> ---
+состоянии счетов. Сервис депозитов поддерживает две программы по образцу банка <<Решение>> ---
 отзывный вклад с ежемесячной выплатой процентов и срочный безотзывный вклад с выплатой
 в конце срока; при заключении договора он открывает два счёта клиента и выполняет проводки
 строго по схеме из задания.
@@ -620,8 +692,9 @@ $1\,000\,000 - 176{,}44 - 162{,}58 = 999\,660{,}98$ BYN.
 процедуру устойчивой к повторам и к временной недоступности участника --- это те свойства,
 без которых распределённая система не может надёжно работать с деньгами.
 
-Данные о клиентах берутся из модуля первой работы по REST. Корректность проверена 69
-автоматическими тестами, в том числе сверкой оборотов всех счетов со схемой проводок на
+Данные о клиентах берутся из модуля первой работы по REST. Интерфейс и ответы сервисов
+доступны на трёх языках: язык пользователя передаётся между сервисами, а названия проводок
+хранятся кодами и переводятся при чтении. Корректность проверена 86 автоматическими тестами, в том числе сверкой оборотов всех счетов со схемой проводок на
 полном жизненном цикле договора.
 
 \sectioncenter{Список использованных источников}

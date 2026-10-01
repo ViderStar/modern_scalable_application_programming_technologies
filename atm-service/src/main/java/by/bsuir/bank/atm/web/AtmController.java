@@ -1,5 +1,6 @@
 package by.bsuir.bank.atm.web;
 
+import by.bsuir.bank.atm.bank.DemoCard;
 import by.bsuir.bank.atm.session.AtmService;
 import by.bsuir.bank.atm.session.AtmService.SessionView;
 import by.bsuir.bank.atm.session.Screen;
@@ -13,9 +14,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /** REST клиентского интерфейса банкомата: события клавиатуры и боковых кнопок, в ответ — новый экран. */
 @RestController
-@RequestMapping("/api/sessions")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class AtmController {
 
@@ -27,28 +30,34 @@ public class AtmController {
     public record Selected(String option) {
     }
 
-    @PostMapping
+    /** Подсказка эмулятора: демонстрационные карты и их PIN-коды. */
+    @GetMapping("/demo-cards")
+    public List<DemoCard> demoCards() {
+        return service.demoCards();
+    }
+
+    @PostMapping("/sessions")
     @ResponseStatus(HttpStatus.CREATED)
     public SessionView open() {
         return service.open();
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/sessions/{id}")
     public Screen screen(@PathVariable String id) {
         return service.get(id).screen();
     }
 
-    @PostMapping("/{id}/enter")
+    @PostMapping("/sessions/{id}/enter")
     public Screen enter(@PathVariable String id, @RequestBody Entered event) {
         return service.get(id).enter(event.value());
     }
 
-    @PostMapping("/{id}/select")
+    @PostMapping("/sessions/{id}/select")
     public Screen select(@PathVariable String id, @RequestBody Selected event) {
         return service.get(id).select(event.option());
     }
 
-    @PostMapping("/{id}/cancel")
+    @PostMapping("/sessions/{id}/cancel")
     public Screen cancel(@PathVariable String id) {
         return service.get(id).cancel();
     }

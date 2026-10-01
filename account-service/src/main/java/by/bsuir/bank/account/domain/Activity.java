@@ -1,22 +1,19 @@
 package by.bsuir.bank.account.domain;
 
+import by.bsuir.bank.common.i18n.Messages;
+
 import java.math.BigDecimal;
 
 /** Активность балансового счёта определяет, какая сторона увеличивает остаток. */
 public enum Activity {
 
-    ACTIVE("Активный"),
-    PASSIVE("Пассивный"),
-    ACTIVE_PASSIVE("Активно-пассивный");
+    ACTIVE,
+    PASSIVE,
+    ACTIVE_PASSIVE;
 
-    private final String title;
-
-    Activity(String title) {
-        this.title = title;
-    }
-
+    /** Название на языке запроса: «Активный», «Пассивный», «Активно-пассивный». */
     public String getTitle() {
-        return title;
+        return Messages.get("activity." + name());
     }
 
     /** Сальдо: у активного счёта дебет минус кредит, у пассивного — кредит минус дебет. */

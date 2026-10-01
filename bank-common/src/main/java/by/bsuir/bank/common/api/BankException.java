@@ -1,5 +1,6 @@
 package by.bsuir.bank.common.api;
 
+import by.bsuir.bank.common.i18n.Messages;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
@@ -38,7 +39,6 @@ public class BankException extends RuntimeException {
 
     /** Ошибки, привязанные к полям формы. */
     public static BankException fields(Map<String, String> fields) {
-        return new BankException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
-                "Проверьте правильность заполнения полей", fields);
+        return new BankException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", Messages.get("error.checkFields"), fields);
     }
 }

@@ -2,6 +2,7 @@ package by.bsuir.bank.atm;
 
 import by.bsuir.bank.atm.bank.BankGateway;
 import by.bsuir.bank.atm.bank.BankReply;
+import by.bsuir.bank.atm.bank.DemoCard;
 import by.bsuir.bank.atm.bank.Operator;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
@@ -65,6 +66,8 @@ class AtmUiIT {
     void openAtm() {
         when(bank.send(any())).thenAnswer(call -> AtmSessionTestBank.reply(call.getArgument(0)));
         when(bank.operators()).thenReturn(List.of(new Operator("A1", "A1"), new Operator("MTS", "МТС")));
+        when(bank.demoCards()).thenReturn(List.of(
+                new DemoCard("9112380000000010", PIN, "Иванов Иван Иванович", "К-900001", false)));
         wait = new WebDriverWait(driver, Duration.ofSeconds(10));
         driver.get("http://localhost:" + port + "/");
         waitForState("INSERT_CARD");
@@ -145,6 +148,31 @@ class AtmUiIT {
         waitForState("MESSAGE");
         assertThat(driver.findElement(By.id("display-title")).getText()).isEqualTo("Платёж принят");
         assertThat(driver.findElement(By.id("receipt")).getText()).contains("ОПЛАТА УСЛУГ СВЯЗИ", "Операция № AB12CD34");
+    }
+
+    @Test
+    @DisplayName("Демо-карта вставляется кнопкой, интерфейс переключается на английский и белорусский")
+    void demoCardAndLanguages() {
+        try {
+            assertThat(driver.findElement(By.id("demo-pin-0")).getText()).isEqualTo(PIN);
+            click("demo-insert-0");
+            assertThat(driver.findElement(By.id("display-input")).getText()).isEqualTo("9112 3800 0000 0010");
+            click("key-enter");
+            waitForState("PIN");
+
+            click("lang-en");
+            wait.until(ExpectedConditions.textToBe(By.id("display-title"), "Please insert your card"));
+            assertThat(driver.findElement(By.id("key-enter")).getText()).isEqualToIgnoringCase("Enter");
+            assertThat(driver.getTitle()).isEqualTo("ATM — BankEt");
+
+            click("lang-be");
+            wait.until(ExpectedConditions.textToBe(By.id("display-title"), "Устаўце, калі ласка, картку"));
+            press("123");
+            click("key-enter");
+            wait.until(ExpectedConditions.textToBe(By.id("notice"), "Нумар карткі складаецца з 16 лічбаў"));
+        } finally {
+            driver.manage().deleteCookieNamed("bank_lang");
+        }
     }
 
     private void press(String digits) {

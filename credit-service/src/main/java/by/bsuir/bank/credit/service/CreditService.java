@@ -3,6 +3,7 @@ package by.bsuir.bank.credit.service;
 import by.bsuir.bank.common.api.BankException;
 import by.bsuir.bank.common.client.ClientApi;
 import by.bsuir.bank.common.client.ClientInfo;
+import by.bsuir.bank.common.i18n.Messages;
 import by.bsuir.bank.common.ledger.AccountInfo;
 import by.bsuir.bank.common.ledger.Batch;
 import by.bsuir.bank.common.ledger.LedgerApi;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -56,7 +58,7 @@ public class CreditService {
     private final LedgerApi ledger;
 
     public Meta meta() {
-        String last = contracts.maxNumber();
+        String last = contracts.maxNumberBelow(DemoCards.NUMBER_FROM);      // демо-договоры в нумерации не участвуют
         int next = last == null ? 1 : Integer.parseInt(last.substring(2)) + 1;
         return new Meta(ledger.bankDay().date(), ledger.currencies(), String.format("К-%06d", next));
     }
@@ -92,8 +94,8 @@ public class CreditService {
         LocalDate today = ledger.bankDay().date();
         checkTerms(request, product, today);
         if (contracts.existsByNumber(request.number())) {
-            throw new BankException(HttpStatus.CONFLICT, "DUPLICATE_CONTRACT", "Договор уже существует",
-                    Map.of("number", "Договор с таким номером уже заключён"));
+            throw new BankException(HttpStatus.CONFLICT, "DUPLICATE_CONTRACT", Messages.get("contract.duplicate"),
+                    Map.of("number", Messages.get("contract.duplicateNumber")));
         }
         ClientInfo client = findClient(request.clientId());
 
@@ -139,24 +141,24 @@ public class CreditService {
     private void checkTerms(CreditRequest request, CreditProduct product, LocalDate today) {
         Map<String, String> errors = new LinkedHashMap<>();
         if (!product.getCurrency().equals(request.currency())) {
-            errors.put("productId", "Программа недоступна в валюте " + request.currency());
+            errors.put("productId", Messages.get("contract.productCurrency", request.currency()));
         }
         if (request.amount().compareTo(product.getMinAmount()) < 0 || request.amount().compareTo(product.getMaxAmount()) > 0) {
-            errors.put("amount", "Сумма кредита по программе: от " + product.getMinAmount()
-                    + " до " + product.getMaxAmount() + " " + product.getCurrency());
+            errors.put("amount", Messages.get("credit.amountRange",
+                    product.getMinAmount(), product.getMaxAmount(), product.getCurrency()));
         }
         if (request.rate().compareTo(product.getRate()) != 0) {
-            errors.put("rate", "Ставка по программе — " + product.getRate() + " %");
+            errors.put("rate", Messages.get("contract.rate", product.getRate()));
         }
         if (request.termMonths() < product.getMinTermMonths() || request.termMonths() > product.getMaxTermMonths()) {
-            errors.put("termMonths", "Срок по программе: от " + product.getMinTermMonths()
-                    + " до " + product.getMaxTermMonths() + " мес.");
+            errors.put("termMonths", Messages.get("contract.termRange",
+                    product.getMinTermMonths(), product.getMaxTermMonths()));
         }
         if (!request.startDate().equals(today)) {
-            errors.put("startDate", "Договор заключается текущим банковским днём: " + RU_DATE.format(today));
+            errors.put("startDate", Messages.get("contract.startDate", RU_DATE.format(today)));
         }
         if (!request.endDate().equals(request.startDate().plusMonths(request.termMonths()))) {
-            errors.put("endDate", "Дата окончания не соответствует сроку договора");
+            errors.put("endDate", Messages.get("contract.endDate"));
         }
         if (!errors.isEmpty()) {
             throw BankException.fields(errors);
@@ -173,7 +175,7 @@ public class CreditService {
         BigDecimal available = ledger.account(contract.getMainAccount()).balance();
         if (available.compareTo(amount) < 0) {
             throw BankException.conflict("INSUFFICIENT_FUNDS",
-                    "Недостаточно средств на счёте: доступно " + available + " " + contract.getCurrency());
+                    Messages.get("credit.insufficient", available.setScale(2, RoundingMode.HALF_UP), contract.getCurrency()));
         }
         post(key(contract.getNumber(), "CASH-" + UUID.randomUUID()), contract.getNumber(), null,
                 CreditPostings.cashOut(cash(contract.getCurrency()), contract.getMainAccount(), amount));
@@ -204,13 +206,13 @@ public class CreditService {
             item.setPaidOn(date);
             contract.setInterestPaid(contract.getInterestPaid().add(item.getInterest()));
             contract.setPrincipalPaid(contract.getPrincipalPaid().add(item.getPrincipal()));
-            events.add(RU_DATE.format(date) + ": " + number + " — платёж №" + item.getSeq() + ": проценты " + item.getInterest()
-                    + ", основной долг " + item.getPrincipal() + " " + currency);
+            events.add(Messages.get("credit.event.payment", RU_DATE.format(date), number, item.getSeq(),
+                    item.getInterest(), item.getPrincipal(), currency));
         }
         if (contract.getSchedule().stream().allMatch(PaymentItem::isPaid)) {
             contract.setStatus(ContractStatus.CLOSED);
             contract.setClosedOn(date);
-            events.add(RU_DATE.format(date) + ": " + number + " — кредит погашен, договор закрыт");
+            events.add(Messages.get("credit.event.closed", RU_DATE.format(date), number));
         }
         return events;
     }
@@ -219,13 +221,13 @@ public class CreditService {
         try {
             return clients.get(clientId);
         } catch (HttpClientErrorException.NotFound e) {
-            throw BankException.fields(Map.of("clientId", "Клиент не найден в модуле «Клиенты»"));
+            throw BankException.fields(Map.of("clientId", Messages.get("contract.clientNotFound")));
         }
     }
 
     private CreditProduct product(Long id) {
         return products.findById(id)
-                .orElseThrow(() -> BankException.fields(Map.of("productId", "Вид кредита отсутствует в справочнике")));
+                .orElseThrow(() -> BankException.fields(Map.of("productId", Messages.get("credit.unknownProduct"))));
     }
 
     private CreditView view(CreditContract contract) {
@@ -249,6 +251,6 @@ public class CreditService {
     }
 
     private CreditContract find(Long id) {
-        return contracts.findById(id).orElseThrow(() -> BankException.notFound("Кредитный договор не найден"));
+        return contracts.findById(id).orElseThrow(() -> BankException.notFound(Messages.get("credit.notFound")));
     }
 }

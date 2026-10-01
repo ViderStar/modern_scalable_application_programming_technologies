@@ -39,7 +39,8 @@
 остальных случаях --- по желанию клиента. Номер карты и PIN-код вводятся с клавиатуры; сумма
 снятия должна быть неотрицательным целым числом; номер телефона при платеже состоит из
 десяти цифр и перед отправкой подтверждается клиентом. В работе реализованы все операции,
-включая необязательные.
+включая необязательные. Дополнительно банкомат работает на трёх языках --- русском,
+английском и белорусском, а для знакомства с ним банк выпускает демонстрационные карты.
 
 \section{Проектирование}
 
@@ -131,7 +132,7 @@
 \begin{lstlisting}[style=json, caption={Транзакция снятия наличных и ответ банка}, label={lst:exchange}]
 POST /api/atm/transactions
 {"items": [
-  {"name": "CARD",      "value": "9112380000000036"},
+  {"name": "CARD",      "value": "9112380000000010"},
   {"name": "PIN",       "value": "****"},
   {"name": "OPERATION", "value": "WITHDRAW"},
   {"name": "AMOUNT",    "value": "450"}
@@ -139,8 +140,8 @@ POST /api/atm/transactions
 
 200 OK
 {"status": "OK", "code": "OK", "message": "Заберите деньги",
- "data": {"amount": 450, "balance": 2550.00, "currency": "BYN",
-          "bankDate": "2026-11-01", "holder": "Лебедевич Артем Владимирович"}}
+ "data": {"amount": 450, "balance": 4550.00, "currency": "BYN",
+          "bankDate": "2026-10-01", "holder": "Лебедевич Артем Владимирович"}}
 \end{lstlisting}
 
 Банк не хранит состояние диалога: каждая транзакция содержит номер карты и PIN-код и
@@ -260,6 +261,47 @@ PIN-код по которому нельзя; при утрате он пере
 Номер карты содержит контрольную цифру по алгоритму Луна. Банкомат проверяет её сам и
 не обращается в банк, если номер набран с ошибкой.
 
+\subsection{Демонстрационные карты}
+
+PIN-код обычной карты известен только тому, кто видел <<ПИН-конверт>>, поэтому сразу после
+запуска системы работать с банкоматом было бы нечем. Для знакомства с эмулятором сервис
+кредитов после старта сам заключает три кредитных договора и назначает их картам PIN-коды из
+настройки \texttt{bank.demo} (таблица~\ref{tab:demo}). Номера и PIN-коды этих карт показаны на
+странице банкомата, карту можно <<вставить>> одной кнопкой.
+
+\begin{table}[H]
+\caption{Демонстрационные карты}
+\label{tab:demo}
+\centering
+\small
+\begin{tabular}{llllr}
+\toprule
+Номер карты & PIN-код & Держатель & Договор & Кредит, BYN \\
+\midrule
+9112 3800 0000 0010 & 1111 & Лебедевич А.~В. & К-900001 & 5\,000 \\
+9112 3800 0000 0028 & 2222 & Савицкая М.~О. & К-900002 & 3\,000 \\
+9112 3800 0000 0036 & 3333 & Жуков Д.~А. & К-900003 & 10\,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Демо-договоры заключаются обычным путём --- тем же методом, что и договоры из формы, с теми
+же счетами и проводками, а PIN-код и здесь хранится только в виде хеша. Сервисам клиентов и
+счетов нужно время на запуск, поэтому выдача выполняется в фоновом потоке с повторами, пока
+смежные сервисы не ответят; повторный запуск ничего не дублирует. Номера демо-договоров
+начинаются с К-900001 и не занимают номера обычных договоров. Демо-режим отключается
+параметром \texttt{bank.demo.enabled=false}: в рабочей системе известных заранее PIN-кодов
+быть не должно.
+
+\subsection{Локализация}
+
+Банкомат --- <<тонкий>> терминал: тексты экрана, пункты меню и чеки формирует сервис, а не
+браузер. Поэтому переводятся они на сервере. Web-интерфейс передаёт выбранный язык в
+заголовке \texttt{Accept-Language}, автомат сеанса строит экран на этом языке, а при
+обращении к банку заголовок передаётся дальше, и сообщение банка (например, <<Недостаточно
+средств>>) приходит на том же языке. В словаре самого интерфейса остаются только подписи
+клавиш и служебной панели.
+
 \section{Реализация}
 
 \subsection{Структура}
@@ -273,12 +315,14 @@ atm-service/
   session/     AtmSession  — конечный автомат сеанса и внутренний список
                AtmState, Screen, Receipts, AtmService (реестр сеансов)
   web/         AtmController — REST клиентского интерфейса
-  resources/   static/index.html, app.js, atm.css — интерфейс банкомата
+  resources/   messages*.properties — тексты экранов и чеков на трёх языках
+               static/index.html, app.js, i18n.js, atm.css — интерфейс банкомата
 credit-service/
   atm/         AtmProcessor — обработка транзакций; AtmRequest, AtmResponse, DepositApi
   domain/      Card, CardNumbers, MobileOperator, MobilePayment
   service/     CardService — выпуск карты, проверка и перевыпуск PIN-кода
-  web/         AtmController — POST /api/atm/transactions
+               DemoCards, DemoProperties — демонстрационные карты
+  web/         AtmController — POST /api/atm/transactions, GET /api/atm/demo-cards
 \end{Verbatim}
 
 \subsection{Автомат сеанса и внутренний список}
@@ -286,7 +330,7 @@ credit-service/
 Сеанс представлен объектом \texttt{AtmSession}. Событие <<Ввод>> обрабатывается в
 зависимости от текущего состояния (листинг~\ref{lst:enter}): значение проверяется, добавляется
 во внутренний список \texttt{buffer}, и автомат переходит в следующее состояние либо
-обращается к банку.
+обращается к банку. Сообщения заданы ключами словаря и выводятся на языке клиента.
 
 \begin{lstlisting}[style=java, caption={Обработка ввода с клавиатуры (\texttt{AtmSession.enter})}, label={lst:enter}]
 public synchronized Screen enter(String text) {
@@ -296,7 +340,7 @@ public synchronized Screen enter(String text) {
         case INSERT_CARD -> insertCard(value);
         case PIN -> {
             if (!value.matches("\\d{4}")) {
-                notice = "PIN-код состоит из 4 цифр";
+                warn("notice.pinLength");                  // «PIN-код состоит из 4 цифр»
             } else {
                 buffer.add(new Item(Item.PIN, value));
                 authorize();
@@ -309,7 +353,7 @@ public synchronized Screen enter(String text) {
         }
         case PHONE -> {
             if (!value.matches("\\d{10}")) {
-                notice = "Номер телефона — 10 цифр, например 0291234567";
+                warn("notice.phoneLength");                // «Номер телефона — 10 цифр…»
             } else {
                 buffer.add(new Item(Item.PHONE, value));
                 state = AtmState.PAY_AMOUNT;
@@ -338,10 +382,10 @@ private void execute() {
     buffer.clear();
     if (reply == null) {
         state = AtmState.MESSAGE;
-        notice = "Нет связи с банком. Операция не выполнена";
+        warn("notice.noLinkOperation");                    // «Нет связи с банком. Операция не выполнена»
     } else if (!reply.ok()) {
         if ("WRONG_PIN".equals(reply.code()) || "CARD_BLOCKED".equals(reply.code())) {
-            eject(reply.message() + ". Заберите карту");
+            eject(Messages.get("notice.takeCard", reply.message()), false);
         } else {
             state = AtmState.MESSAGE;
             notice = reply.message();
@@ -386,27 +430,27 @@ private void chooseOperation(String option) {
 \begin{lstlisting}[style=java, caption={Проверка карты и PIN-кода, выбор операции (\texttt{AtmProcessor.handle})}, label={lst:processor}]
 Card card = cards.findByNumber(tx.get("CARD")).orElse(null);
 if (card == null) {
-    return AtmResponse.error("CARD_NOT_FOUND", "Карта не обслуживается банком");
+    return AtmResponse.error("CARD_NOT_FOUND", Messages.get("atm.cardNotFound"));
 }
 if (card.isBlocked()) {
-    return AtmResponse.error("CARD_BLOCKED", "Карта заблокирована. Обратитесь в банк");
+    return AtmResponse.error("CARD_BLOCKED", Messages.get("atm.cardBlocked"));
 }
 if (!cardService.matches(card, tx.get("PIN"))) {
     int left = card.registerFailedAttempt();
     return left == 0
-            ? AtmResponse.error("CARD_BLOCKED", "PIN-код трижды введён неверно. Карта заблокирована")
-            : AtmResponse.error("WRONG_PIN", "Неверный PIN-код. Осталось попыток: " + left, Map.of("attemptsLeft", left));
+            ? AtmResponse.error("CARD_BLOCKED", Messages.get("atm.blockedNow"))
+            : AtmResponse.error("WRONG_PIN", Messages.get("atm.wrongPin", left), Map.of("attemptsLeft", left));
 }
 card.setFailedAttempts(0);
 
 try {
     return switch (operation) {
-        case "AUTHORIZE" -> AtmResponse.ok("Авторизация выполнена", Map.of("holder", card.getHolder()));
+        case "AUTHORIZE" -> AtmResponse.ok(Messages.get("atm.authorized"), Map.of("holder", card.getHolder()));
         case "BALANCE" -> balance(card);
         case "DEPOSIT_BALANCE" -> depositBalance(card);
         case "WITHDRAW" -> withdraw(card, tx.get("AMOUNT"));
         case "PAYMENT" -> payment(card, tx.get("OPERATOR"), tx.get("PHONE"), tx.get("AMOUNT"));
-        default -> AtmResponse.error("UNKNOWN_OPERATION", "Операция не поддерживается");
+        default -> AtmResponse.error("UNKNOWN_OPERATION", Messages.get("atm.unknownOperation"));
     };
 } catch (BankException e) {
     return AtmResponse.error(e.getCode(), e.getMessage());
@@ -427,8 +471,8 @@ try {
 кнопкам. Пока идёт обращение к банку, на экране показывается надпись <<Авторизация на
 сервере...>>. Цифры можно набирать и с клавиатуры компьютера.
 
-Справа от банкомата для наглядности выводятся текущее состояние автомата, содержимое
-внутреннего списка и последняя транзакция с ответом банка.
+Справа от банкомата для наглядности выводятся демонстрационные карты, текущее состояние
+автомата, содержимое внутреннего списка и последняя транзакция с ответом банка.
 
 \begin{table}[H]
 \caption{REST клиентского интерфейса банкомата}
@@ -444,13 +488,14 @@ GET & \texttt{/api/sessions/\{id\}} & текущий экран \\
 POST & \texttt{/api/sessions/\{id\}/enter} & клавиша <<Ввод>> с набранным значением \\
 POST & \texttt{/api/sessions/\{id\}/select} & боковая кнопка: выбран пункт меню \\
 POST & \texttt{/api/sessions/\{id\}/cancel} & клавиша <<Отмена>> \\
+GET & \texttt{/api/demo-cards} & демонстрационные карты с PIN-кодами \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \section{Тестирование}
 
-Банкомат и банковская сторона протокола покрыты 68 тестами
+Банкомат и банковская сторона протокола покрыты 77 тестами
 (таблица~\ref{tab:tests}). Автомат сеанса тестируется как обычный объект с заглушкой банка:
 тесты подают события и проверяют экран, содержимое внутреннего списка и транзакцию,
 отправленную банку (листинг~\ref{lst:test}). Функциональные тесты проходят сценарии в
@@ -466,15 +511,16 @@ POST & \texttt{/api/sessions/\{id\}/cancel} & клавиша <<Отмена>> \\
 Класс тестов & Тестов & Что проверяется \\
 \midrule
 \multicolumn{3}{l}{\textit{atm-service}} \\
-\texttt{AtmSessionTest} & 27 & переходы автомата, внутренний список, чеки, отказы \\
-\texttt{AtmApiIT} & 3 & REST интерфейса, независимость сеансов \\
-\texttt{AtmUiIT} & 3 & снятие с чеком, три неверных PIN-кода, платёж --- в браузере \\
+\texttt{AtmSessionTest} & 28 & переходы автомата, внутренний список, чеки, отказы, языки \\
+\texttt{AtmApiIT} & 5 & REST интерфейса, независимость сеансов, демо-карты \\
+\texttt{AtmUiIT} & 4 & снятие с чеком, три неверных PIN-кода, платёж, языки --- в браузере \\
 \midrule
 \multicolumn{3}{l}{\textit{credit-service}} \\
 \texttt{AtmProtocolIT} & 25 & все операции протокола, блокировка карты, проводки \\
+\texttt{DemoCardsIT} & 5 & выпуск демо-карт, ответы банка на трёх языках \\
 \texttt{CardNumbersTest} & 10 & алгоритм Луна, счётчик попыток \\
 \midrule
-Всего & 68 & \\
+Всего & 77 & \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -504,13 +550,18 @@ void secondOperationRequiresPinAgain() {
 
 \section{Результаты работы}
 
-Для демонстрации клиенту выдан кредит 3\,000 BYN с картой. Все пять сервисов запущены,
-банкомат открыт по адресу \texttt{http://localhost:8085}.
+Все пять сервисов запущены, банкомат открыт по адресу \texttt{http://localhost:8085}.
+Сразу после запуска на странице видны три демонстрационные карты с PIN-кодами
+(рисунок~\ref{fig:demo}); для сценария используется первая из них --- карта к кредиту
+5\,000 BYN.
 
-Сеанс начинается с ввода номера карты (рисунок~\ref{fig:insert}); номер отображается
-группами по четыре цифры. После неверного PIN-кода банкомат сообщает число оставшихся
-попыток и запрашивает его повторно (рисунок~\ref{fig:wrong}); в панели справа виден ответ
-банка с кодом \texttt{WRONG\_PIN}.
+\screenshot{img/demo_cards.png}{Банкомат после запуска и демонстрационные карты}{fig:demo}
+
+Сеанс начинается с ввода номера карты (рисунок~\ref{fig:insert}): номер набирается на
+клавиатуре либо подставляется кнопкой <<Вставить>> и отображается группами по четыре цифры.
+После неверного PIN-кода банкомат сообщает число оставшихся попыток и запрашивает его
+повторно (рисунок~\ref{fig:wrong}); в панели справа виден ответ банка с кодом
+\texttt{WRONG\_PIN}.
 
 \screenshot{img/insert_card.png}{Ввод номера карты}{fig:insert}
 
@@ -557,14 +608,23 @@ void secondOperationRequiresPinAgain() {
 \screenshot{img/deposit_balance.png}{Остаток депозитного счёта}{fig:deposit}
 
 После трёх неверных PIN-кодов подряд работа принудительно завершается, а банк блокирует
-карту (рисунок~\ref{fig:blocked}).
+карту (рисунок~\ref{fig:blocked}): для этого использована третья демонстрационная карта, и
+в списке демо-карт она отмечена заблокированной.
 
 \screenshot{img/blocked.png}{Три неверных PIN-кода: карта заблокирована}{fig:blocked}
 
+Банкомат на английском и белорусском языках показан на рисунках~\ref{fig:lang-en}
+и~\ref{fig:lang-be}. Переведены экран, пункты меню, клавиши, служебная панель и чек; ответ
+банка в журнале обмена также пришёл на выбранном языке.
+
+\screenshot{img/lang_en.png}{Главное меню на английском языке}{fig:lang-en}
+
+\screenshot{img/lang_be.png}{Снятие наличных и чек на белорусском языке}{fig:lang-be}
+
 Результат операций со стороны банка показан на рисунке~\ref{fig:bank}: в карточке
-кредитного договора карта отмечена заблокированной, доступный остаток уменьшился, в
-проводках видны снятие через кассу и оплата услуг связи. В отчёте главной книги
-(рисунок~\ref{fig:report}) появился расчётный счёт оператора 3012 с суммой платежа.
+кредитного договора первой карты доступный остаток уменьшился, в проводках видны снятие
+через кассу и оплата услуг связи. В отчёте главной книги (рисунок~\ref{fig:report}) появился
+расчётный счёт оператора 3012 с суммой платежа.
 
 \screenshot[0.95\textwidth]{img/bank_side.png}{Карточка кредитного договора после операций в банкомате}{fig:bank}
 
@@ -587,7 +647,11 @@ void secondOperationRequiresPinAgain() {
 решения по каждой транзакции независимо. PIN-код хранится только в виде хеша, счётчик
 неверных попыток ведётся на стороне банка.
 
-Решение проверено 68 автоматическими тестами: модульными тестами автомата,
+Интерфейс банкомата, экраны и чеки доступны на русском, английском и белорусском языках, а
+демонстрационные карты с известными PIN-кодами позволяют опробовать эмулятор сразу после
+запуска.
+
+Решение проверено 77 автоматическими тестами: модульными тестами автомата,
 интеграционными тестами протокола и функциональными тестами интерфейса через WebDriver.
 
 \sectioncenter{Список использованных источников}

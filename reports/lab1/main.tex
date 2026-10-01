@@ -14,6 +14,8 @@
 на Java и Spring, web-клиент с формами <<Список клиентов>> и добавления, редактирования и
 удаления клиента, обеспечить проверку вводимых значений дважды --- в браузере и в сервисе ---
 и покрыть разработанное ПО модульными, интеграционными и функциональными тестами.
+Дополнительно к заданию интерфейс и сообщения сервиса сделаны на трёх языках: русском,
+английском и белорусском.
 
 \section{Задание}
 
@@ -76,7 +78,8 @@ E-mail & текстовый & нет & формат адреса \\
 база данных, собственный REST-интерфейс и собственный web-клиент, который раздаётся тем же
 процессом как статический ресурс. Остальные модули банка (депозиты, кредиты) получают сведения
 о клиентах только через REST, поэтому сервис можно развернуть, остановить и масштабировать
-независимо от них. Структура сервиса показана на рисунке~\ref{fig:arch}.
+независимо от них. Условный банк в системе называется BankEt. Структура сервиса показана
+на рисунке~\ref{fig:arch}.
 
 \begin{figure}[H]
 \centering
@@ -116,6 +119,8 @@ webjar и раздаётся самим сервисом, поэтому для 
 \texttt{citizenship} и \texttt{disability}. Таблица \texttt{client} ссылается на справочники
 внешними ключами (рисунок~\ref{fig:er}). Пол хранится символом \texttt{M}/\texttt{F} с
 ограничением \texttt{check}, поскольку набор значений фиксирован и справочник для него не нужен.
+Наименование в каждом справочнике хранится на трёх языках: \texttt{name}~--- русское,
+\texttt{name\_en} и \texttt{name\_be}~--- английское и белорусское.
 
 \begin{figure}[H]
 \centering
@@ -127,10 +132,10 @@ webjar и раздаётся самим сервисом, поэтому для 
   identification\_number \hfill UQ\\ residence\_city\_id \hfill FK\\ residence\_address\\
   home\_phone, mobile\_phone, email\\ registration\_city\_id \hfill FK\\ marital\_status\_id \hfill FK\\
   citizenship\_id \hfill FK\\ disability\_id \hfill FK\\ pensioner, monthly\_income};
-\node[entity, text width=3.1cm, right=26mm of client.north east, anchor=north west] (city) {\textbf{city}\nodepart{two} id \hfill PK\\ name \hfill UQ};
-\node[entity, text width=3.1cm, below=5mm of city] (ms) {\textbf{marital\_status}\nodepart{two} id \hfill PK\\ name \hfill UQ};
-\node[entity, text width=3.1cm, below=5mm of ms] (cz) {\textbf{citizenship}\nodepart{two} id \hfill PK\\ name \hfill UQ};
-\node[entity, text width=3.1cm, below=5mm of cz] (dis) {\textbf{disability}\nodepart{two} id \hfill PK\\ name \hfill UQ};
+\node[entity, text width=3.1cm, right=26mm of client.north east, anchor=north west] (city) {\textbf{city}\nodepart{two} id \hfill PK\\ name \hfill UQ\\ name\_en, name\_be};
+\node[entity, text width=3.1cm, below=5mm of city] (ms) {\textbf{marital\_status}\nodepart{two} id \hfill PK\\ name \hfill UQ\\ name\_en, name\_be};
+\node[entity, text width=3.1cm, below=5mm of ms] (cz) {\textbf{citizenship}\nodepart{two} id \hfill PK\\ name \hfill UQ\\ name\_en, name\_be};
+\node[entity, text width=3.1cm, below=5mm of cz] (dis) {\textbf{disability}\nodepart{two} id \hfill PK\\ name \hfill UQ\\ name\_en, name\_be};
 \draw[flow] (client.east |- city.west) -- node[above, note] {N : 1 (дважды)} (city.west);
 \draw[flow] (client.east |- ms.west) -- node[above, note] {N : 1} (ms.west);
 \draw[flow] (client.east |- cz.west) -- node[above, note] {N : 1} (cz.west);
@@ -171,7 +176,8 @@ create table client (
 даты --- текстом в формате \texttt{ДД.ММ.ГГГГ}: это позволяет серверу самому решать, является
 ли присланная строка датой, и возвращать ошибку конкретного поля, а не общий сбой разбора
 запроса. Любая ошибка возвращается в едином виде --- общее сообщение и словарь
-<<поле --- сообщение>>, по которому web-клиент подсвечивает поля формы.
+<<поле --- сообщение>>, по которому web-клиент подсвечивает поля формы. Язык сообщений и
+наименований справочников определяется заголовком запроса \texttt{Accept-Language}.
 
 \begin{table}[H]
 \caption{REST-интерфейс микросервиса <<Клиенты>>}
@@ -197,8 +203,9 @@ GET & \texttt{/api/dictionaries} & содержимое четырёх спра�
 \subsection{Структура проекта}
 
 Сервис является модулем многомодульного Maven-проекта банка. Код разложен по слоям
-(листинг~\ref{lst:tree}); общие для всех web-клиентов стили, маски ввода и обёртка над
-\texttt{fetch} вынесены в модуль \texttt{ui-kit}.
+(листинг~\ref{lst:tree}); общие для всех web-клиентов стили, маски ввода, выбор языка и
+обёртка над \texttt{fetch} вынесены в модуль \texttt{ui-kit}, а серверная часть локализации
+--- в пакет \texttt{i18n} общей библиотеки \texttt{bank-common}.
 
 \listingcaption{Структура модуля \texttt{client-service}}{lst:tree}
 \begin{Verbatim}[fontsize=\footnotesize, frame=single, rulecolor=\color{codeframe}]
@@ -211,7 +218,8 @@ src/main/java/by/bsuir/bank/client/
   web/           ClientController, DictionaryController, ApiExceptionHandler
 src/main/resources/
   schema.sql     схема данных          data.sql   справочники и тестовые клиенты
-  static/        index.html, app.js — web-клиент на Vue 3
+  messages.properties, messages_en.properties, messages_be.properties — тексты сервиса
+  static/        index.html, app.js — web-клиент на Vue 3, i18n.js — его словарь
 src/test/java/   модульные (*Test), интеграционные и функциональные (*IT) тесты
 \end{Verbatim}
 
@@ -222,9 +230,9 @@ Web-клиент --- одностраничное приложение на Vue~
 выполняет сервис, чтобы порядок был одинаковым для любого потребителя REST. Форма клиента
 используется и для добавления, и для редактирования; удаление доступно из списка и из формы.
 
-Форма построена по описанию полей: для каждого поля в одном месте заданы подпись, тип,
+Форма построена по описанию полей: для каждого поля в одном месте заданы тип,
 обязательность, маска ввода и функция проверки, а разметка и валидация генерируются по этому
-описанию. Добавление поля сводится к одной строке, и расхождение между тем, что нарисовано,
+описанию; подписи берутся из словаря по имени поля. Добавление поля сводится к одной строке, и расхождение между тем, что нарисовано,
 и тем, что проверяется, становится невозможным. Маска (\texttt{\#}~--- цифра, \texttt{A}~---
 латинская буква) применяется при каждом нажатии клавиши: недопустимые символы отбрасываются,
 разделители расставляются автоматически, поэтому в поле даты физически нельзя набрать текст.
@@ -243,14 +251,13 @@ Web-клиент --- одностраничное приложение на Vue~
 \begin{lstlisting}[style=js, style=marked, caption={Первичная проверка в web-клиенте (\texttt{static/app.js})}, label={lst:client-validation}]
 const SECTIONS = [
   ...
-  { title: 'Паспортные данные', fields: [
-    { name: 'passportSeries', label: 'Серия паспорта', @b@required: true, mask: 'AA'@/b@, placeholder: 'MP',
-      @b@check: v => /^[A-Z]{2}$/.test(v) || 'Серия — две заглавные латинские буквы'@/b@ },
-    { name: 'passportNumber', label: '№ паспорта', @b@required: true, mask: '#######'@/b@, placeholder: '1234567',
-      @b@check: v => /^\d{7}$/.test(v) || 'Номер паспорта — семь цифр'@/b@ },
-    { name: 'identificationNumber', label: 'Идентификационный номер', @b@required: true,
-      mask: '#######A###AA#'@/b@, placeholder: '3140301A001PB5',
-      @b@check: v => /^\d{7}[A-Z]\d{3}[A-Z]{2}\d$/.test(v) || 'Формат: 7 цифр, буква, 3 цифры, 2 буквы, цифра'@/b@ },
+  { title: 'passport', fields: [
+    { name: 'passportSeries', @b@required: true, mask: 'AA'@/b@, placeholder: 'MP',
+      @b@check: v => /^[A-Z]{2}$/.test(v) || t('check.passportSeries')@/b@ },
+    { name: 'passportNumber', @b@required: true, mask: '#######'@/b@, placeholder: '1234567',
+      @b@check: v => /^\d{7}$/.test(v) || t('check.passportNumber')@/b@ },
+    { name: 'identificationNumber', @b@required: true, mask: '#######A###AA#'@/b@, placeholder: '3140301A001PB5',
+      @b@check: v => /^\d{7}[A-Z]\d{3}[A-Z]{2}\d$/.test(v) || t('check.identificationNumber')@/b@ },
     ...
 ];
 
@@ -262,7 +269,7 @@ function validate(form) {
     const value = typeof raw === 'string' ? raw.trim() : raw;
     const empty = value === null || value === undefined || value === '';
     if (empty) {
-      if (field.required) errors[field.name] = REQUIRED;
+      if (field.required) errors[field.name] = t('common.required');
       continue;
     }
     const result = field.check ? field.check(value, form) : true;
@@ -277,7 +284,8 @@ Bean Validation на записи \texttt{ClientRequest}; контроллер �
 \texttt{@Valid}, и до бизнес-логики запрос с ошибками не доходит. Полужирным выделены
 ограничения обязательности (\texttt{@NotBlank}, \texttt{@NotNull}) и маски (\texttt{@Pattern},
 \texttt{@DateText}). Регулярные выражения масок собраны в классе \texttt{Masks} и по
-содержанию совпадают с выражениями web-клиента.
+содержанию совпадают с выражениями web-клиента. Сообщения заданы ключами в фигурных скобках:
+текст подставляется из словаря на языке запроса.
 
 \begin{lstlisting}[style=java, style=marked, caption={Серверная проверка: запись \texttt{ClientRequest} и маски \texttt{Masks}}, label={lst:server-validation}]
 public record ClientRequest(
@@ -290,18 +298,18 @@ public record ClientRequest(
         String birthDate,
 
         @b@@NotBlank(message = REQUIRED)
-        @Pattern(regexp = Masks.PASSPORT_SERIES, message = "Серия — две заглавные латинские буквы")@/b@
+        @Pattern(regexp = Masks.PASSPORT_SERIES, message = "{validation.passportSeries}")@/b@
         String passportSeries,
 
         @b@@NotBlank(message = REQUIRED)
-        @Pattern(regexp = Masks.PASSPORT_NUMBER, message = "Номер паспорта — семь цифр")@/b@
+        @Pattern(regexp = Masks.PASSPORT_NUMBER, message = "{validation.passportNumber}")@/b@
         String passportNumber,
         ...
         @b@@NotBlank(message = REQUIRED)
-        @Pattern(regexp = Masks.IDENTIFICATION_NUMBER, message = "Формат: 7 цифр, буква, 3 цифры, 2 буквы, цифра")@/b@
+        @Pattern(regexp = Masks.IDENTIFICATION_NUMBER, message = "{validation.identificationNumber}")@/b@
         String identificationNumber,
         ...
-        @b@@Pattern(regexp = Masks.MOBILE_PHONE, message = "Формат: +375 (29) 314-15-92")@/b@
+        @b@@Pattern(regexp = Masks.MOBILE_PHONE, message = "{validation.mobilePhone}")@/b@
         String mobilePhone,
 
         @b@@NotNull(message = REQUIRED)@/b@
@@ -373,15 +381,78 @@ private void checkUnique(ClientRequest request, Long selfId) {
     clients.findByPassportSeriesAndPassportNumber(request.passportSeries(), request.passportNumber())
             .filter(other -> !other.getId().equals(selfId))
             .ifPresent(other -> {
-                errors.put("passportSeries", DUPLICATE_PASSPORT);
-                errors.put("passportNumber", DUPLICATE_PASSPORT);
+                errors.put("passportSeries", Messages.get("client.duplicatePassport"));
+                errors.put("passportNumber", Messages.get("client.duplicatePassport"));
             });
     clients.findByIdentificationNumber(request.identificationNumber())
             .filter(other -> !other.getId().equals(selfId))
-            .ifPresent(other -> errors.put("identificationNumber", DUPLICATE_IDENTIFICATION));
+            .ifPresent(other -> errors.put("identificationNumber", Messages.get("client.duplicateIdentification")));
     if (!errors.isEmpty()) {
-        throw new FieldErrorException(HttpStatus.CONFLICT, "Такой клиент уже есть в базе", errors);
+        throw new FieldErrorException(HttpStatus.CONFLICT, Messages.get("client.duplicate"), errors);
     }
+}
+\end{lstlisting}
+
+\subsection{Локализация}
+
+Язык выбирается переключателем в шапке любого web-клиента. Выбор хранится в cookie
+\texttt{bank\_lang}: cookie не зависит от порта, поэтому язык един для всех web-клиентов
+системы. Перевод выполняется в трёх местах (таблица~\ref{tab:i18n}).
+
+\begin{table}[H]
+\caption{Где переводятся тексты}
+\label{tab:i18n}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Что & Где хранится перевод & Как выбирается язык \\
+\midrule
+Подписи, кнопки, первичная проверка & словарь \texttt{i18n.js} web-клиента & функция \texttt{Bank.t} по cookie \\
+Сообщения сервиса & \texttt{messages*.properties} & заголовок \texttt{Accept-Language} \\
+Значения справочников & столбцы \texttt{name}, \texttt{name\_en}, \texttt{name\_be} & заголовок \texttt{Accept-Language} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Web-клиент при каждом REST-вызове передаёт выбранный язык в заголовке
+\texttt{Accept-Language} (листинг~\ref{lst:i18n-js}). В сервисе язык запроса определяет
+стандартный \texttt{AcceptHeaderLocaleResolver} с тремя поддерживаемыми языками и русским по
+умолчанию, а тексты выдаёт \texttt{MessageSource} из файлов \texttt{messages.properties}
+(русский), \texttt{messages\_en.properties} и \texttt{messages\_be.properties}. Тот же
+источник использует Bean Validation, поэтому ключ \texttt{\{validation.required\}} в
+аннотации превращается в <<Обязательное поле>>, <<Required field>> или <<Абавязковае поле>>.
+
+\begin{lstlisting}[style=js, caption={Выбор текста и передача языка сервису (\texttt{ui-kit/bank.js})}, label={lst:i18n-js}]
+lang: (document.cookie.match(/(?:^|; )bank_lang=(ru|en|be)/) || [])[1] || 'ru',
+
+t(key, ...args) {
+  const text = Bank.messages[Bank.lang][key] ?? Bank.messages.ru[key] ?? key;
+  return text.replace(/\{(\d+)\}/g, (match, index) => args[index] ?? '');
+},
+
+async api(method, url, body) {
+  const options = { method, headers: { 'Accept': 'application/json', 'Accept-Language': Bank.lang } };
+  ...
+\end{lstlisting}
+
+Значения справочников --- это данные, а не тексты программы, поэтому их переводы хранятся
+в базе рядом с русским наименованием. Сущность справочника отдаёт наименование на языке
+запроса (листинг~\ref{lst:i18n-java}), и в ответе REST всегда одно поле \texttt{name}:
+потребителю не нужно знать о существовании переводов. Данные самого клиента --- ФИО, адрес ---
+не переводятся.
+
+\begin{lstlisting}[style=java, caption={Наименование справочника на языке запроса}, label={lst:i18n-java}]
+// DictionaryItem — общий предок справочников
+public String getName() {
+    return Messages.pick(name, nameEn, nameBe);
+}
+
+// Messages — тексты на языке пользователя
+public static String pick(String ru, String en, String be) {
+    String language = locale().getLanguage();
+    String value = "en".equals(language) ? en : "be".equals(language) ? be : ru;
+    return value == null || value.isBlank() ? ru : value;
 }
 \end{lstlisting}
 
@@ -411,11 +482,12 @@ private void checkUnique(ClientRequest request, Long selfId) {
 \midrule
 \multicolumn{3}{l}{\textit{Интеграционные --- сервис целиком и H2}} \\
 \texttt{ClientApiIT} & 39 & REST через MockMvc, серверная валидация, состояние таблицы \\
+\texttt{ClientLanguageIT} & 9 & сообщения и справочники на трёх языках \\
 \midrule
 \multicolumn{3}{l}{\textit{Функциональные --- браузер через WebDriver}} \\
-\texttt{ClientUiIT} & 36 & сценарии программы защиты в web-клиенте \\
+\texttt{ClientUiIT} & 37 & сценарии программы защиты и переключение языка в web-клиенте \\
 \midrule
-Всего & 148 & \\
+Всего & 158 & \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -493,7 +565,7 @@ void anotherClientWithSamePassport() {
 \subsection{Результаты прогона}
 
 Команда \texttt{./mvnw -pl client-service -am verify} собирает сервис и выполняет все
-148~тестов; функциональные тесты запускают Chrome без окна, драйвер для него загружает
+158~тестов; функциональные тесты запускают Chrome без окна, драйвер для него загружает
 Selenium Manager. Итог прогона приведён в листинге~\ref{lst:run}.
 
 \listingcaption{Результат выполнения тестов}{lst:run}
@@ -503,7 +575,7 @@ Selenium Manager. Итог прогона приведён в листинге~\
 
 После запуска сервис доступен по адресу \texttt{http://localhost:8081}. Форма <<Список
 клиентов>> с начальным заполнением базы показана на рисунке~\ref{fig:list}: шесть клиентов
-отсортированы по фамилии.
+отсортированы по фамилии. В правой части шапки находится переключатель языка.
 
 \screenshot{img/list.png}{Форма <<Список клиентов>>}{fig:list}
 
@@ -538,6 +610,15 @@ Selenium Manager. Итог прогона приведён в листинге~\
 
 \screenshot{img/h2.png}{Таблица \texttt{client} в консоли H2}{fig:h2}
 
+Тот же интерфейс на других языках показан на рисунках~\ref{fig:en} и~\ref{fig:be}. На
+английском выведен список клиентов: переведены заголовки, кнопки и название города из
+справочника, а ФИО остаются данными клиента. На белорусском показана форма с ошибками:
+сообщения первичной проверки взяты из словаря web-клиента.
+
+\screenshot{img/list_en.png}{Список клиентов на английском языке}{fig:en}
+
+\screenshot[0.92\textwidth]{img/form_be.png}{Форма клиента на белорусском языке}{fig:be}
+
 \sectioncenter{Заключение}
 
 В ходе работы разработан микросервис <<Клиенты>> на Java и Spring Boot с базой данных H2
@@ -552,8 +633,12 @@ Bean Validation и контролирует уникальность паспо�
 соответствует практике реальных банковских систем: проверка в браузере служит удобству
 пользователя, а гарантии целостности даёт только сервер.
 
-Работоспособность подтверждена 148 автоматическими тестами: 73 модульными, 39
-интеграционными и 36 функциональными, которые через WebDriver проходят все пункты программы
+Интерфейс и сообщения сервиса доступны на русском, английском и белорусском языках:
+тексты web-клиента переводятся в браузере, сообщения сервиса и значения справочников --- на
+сервере по заголовку \texttt{Accept-Language}.
+
+Работоспособность подтверждена 158 автоматическими тестами: 73 модульными, 48
+интеграционными и 37 функциональными, которые через WebDriver проходят все пункты программы
 защиты и сверяют результат с содержимым таблицы в базе.
 
 \sectioncenter{Список использованных источников}

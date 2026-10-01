@@ -18,12 +18,14 @@
 \section{Задание}
 
 Вариант №\,4 --- банк <<Решение>>. Выбраны две кредитные программы для физических лиц
-(таблица~\ref{tab:products}); условия приближены к действующим предложениям банка.
+(таблица~\ref{tab:products}); условия приближены к действующим предложениям банка. Условный
+банк в учебной системе называется BankEt, программы банка <<Решение>> служат образцом для
+его справочника видов кредита.
 Банки Беларуси кредитуют физических лиц в белорусских рублях, поэтому обе программы
 рублёвые; справочник валют в форме договора при этом используется.
 
 \begin{table}[H]
-\caption{Кредитные программы банка <<Решение>>}
+\caption{Кредитные программы по образцу банка <<Решение>>}
 \label{tab:products}
 \centering
 \small
@@ -120,9 +122,9 @@
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}
-\node[entity, text width=4.6cm, anchor=north west] (product) at (0, 0) {\textbf{credit\_product}\nodepart{two} id \hfill PK\\ name, kind, currency\\ rate\\ min\_amount, max\_amount\\ min\_term\_months\\ max\_term\_months};
+\node[entity, text width=4.6cm, anchor=north west] (product) at (0, 0) {\textbf{credit\_product}\nodepart{two} id \hfill PK\\ name, name\_en, name\_be\\ kind, currency, rate\\ min\_amount, max\_amount\\ min\_term\_months\\ max\_term\_months\\ description (ru, en, be)};
 \node[entity, text width=7.0cm, anchor=north west] (contract) at (6.7, 0) {\textbf{credit\_contract}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ product\_id \hfill FK\\ client\_id, client\_name \hfill $\to$ client-service\\ currency, amount, rate, term\_months\\ start\_date, end\_date, status\\ main\_account, interest\_account \hfill $\to$ account\\ principal\_paid, interest\_paid};
-\node[entity, text width=4.6cm, anchor=north west] (item) at (0, -4.6) {\textbf{payment\_item}\nodepart{two} id \hfill PK\\ contract\_id, seq \hfill FK, UQ\\ due\_date\\ principal, interest\\ balance\_after\\ paid\_on};
+\node[entity, text width=4.6cm, anchor=north west] (item) at (0, -5.0) {\textbf{payment\_item}\nodepart{two} id \hfill PK\\ contract\_id, seq \hfill FK, UQ\\ due\_date\\ principal, interest\\ balance\_after\\ paid\_on};
 \node[entity, text width=7.0cm, anchor=north west] (card) at (6.7, -5.2) {\textbf{card}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ contract\_id \hfill FK, UQ\\ holder, pin\_hash\\ failed\_attempts, blocked};
 \draw[flow] (contract.west |- product.east) -- (product.east);
 \draw[flow] (item.east) -- ++(0.9, 0) |- ([yshift=-14mm]contract.west);
@@ -257,6 +259,7 @@ POST & \texttt{/api/credits/\{id\}/cash} & выдача наличных с кр
 POST & \texttt{/api/credits/\{id\}/pin} & перевыпуск PIN-кода карты \\
 POST & \texttt{/api/internal/day-close} & обработка нового банковского дня \\
 POST & \texttt{/api/atm/transactions} & транзакции банкомата (лабораторная работа №\,4) \\
+GET & \texttt{/api/atm/demo-cards} & демонстрационные карты (лабораторная работа №\,4) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -276,10 +279,11 @@ service/       CreditService       заключение договора, выд
                ScheduleCalculator  расчёт графиков платежей
                CreditPostings      проводки по схеме задания
                CardService         выпуск карты, PIN-код
+               DemoCards           демонстрационные карты для банкомата (ЛР4)
                DayCloseProcessor   участие в закрытии банковского дня
 atm/           банковская сторона протокола банкомата (ЛР4)
 web/           CreditController, ReferenceController, DayCloseController, AtmController
-resources/     schema.sql, data.sql (программы банка), static/ (web-клиент)
+resources/     schema.sql, data.sql (программы банка), messages*.properties, static/ (web-клиент)
 \end{Verbatim}
 
 \subsection{Расчёт графика платежей}
@@ -345,25 +349,37 @@ return new CreditIssued(view(contract), card);
 
 Проводки кредитной программы собраны в классе \texttt{CreditPostings}
 (листинг~\ref{lst:postings}); платёж по графику формирует до шести операций схемы, которые
-главная книга проводит одним атомарным пакетом.
+главная книга проводит одним атомарным пакетом. Как и в сервисе депозитов, название операции
+передаётся кодом и переводится главной книгой при чтении на язык пользователя; сообщения
+самого сервиса и названия кредитных программ также доступны на русском, английском и
+белорусском языках.
 
 \begin{lstlisting}[style=java, caption={Проводки выдачи кредита и платежа по графику (\texttt{CreditPostings})}, label={lst:postings}]
 public static Posting issue(String fund, String main, BigDecimal amount) {
-    return Posting.of("Выделение кредита банком", Entry.debit(fund, amount), Entry.debit(main, amount));
+    // выделение кредита банком
+    return Posting.of(code("posting.credit.issue"), Entry.debit(fund, amount), Entry.debit(main, amount));
 }
 
 public static List<Posting> payment(String cash, String fund, String main, String interestAccount,
                                     BigDecimal interest, BigDecimal principal, boolean last) {
     List<Posting> postings = new ArrayList<>();
     if (interest.signum() > 0) {
-        postings.add(Posting.of("Внесение процентов в кассу", Entry.debit(cash, interest)));
-        postings.add(Posting.of("Перевод процентов из кассы", Entry.credit(cash, interest), Entry.debit(interestAccount, interest)));
-        postings.add(Posting.of("Начисление процентов банком", Entry.credit(interestAccount, interest), Entry.credit(fund, interest)));
+        // внесение процентов в кассу
+        postings.add(Posting.of(code("posting.credit.interestIn"), Entry.debit(cash, interest)));
+        // перевод процентов из кассы
+        postings.add(Posting.of(code("posting.credit.interestFromCash"),
+                Entry.credit(cash, interest), Entry.debit(interestAccount, interest)));
+        // начисление процентов банком
+        postings.add(Posting.of(code("posting.credit.interestCharge"),
+                Entry.credit(interestAccount, interest), Entry.credit(fund, interest)));
     }
     if (principal.signum() > 0) {
-        postings.add(Posting.of("Внесение денег в кассу", Entry.debit(cash, principal)));
-        postings.add(Posting.of("Погашение долга за кредит из кассы", Entry.credit(cash, principal), Entry.debit(main, principal)));
-        postings.add(Posting.of(last ? "Окончание кредита" : "Возврат части кредита в фонд банка",
+        // внесение денег в кассу
+        postings.add(Posting.of(code("posting.credit.cashIn"), Entry.debit(cash, principal)));
+        // погашение долга за кредит из кассы
+        postings.add(Posting.of(code("posting.credit.repay"), Entry.credit(cash, principal), Entry.debit(main, principal)));
+        // окончание кредита — для последнего платежа, иначе возврат части кредита в фонд банка
+        postings.add(Posting.of(code(last ? "posting.credit.maturity" : "posting.credit.partReturn"),
                 Entry.credit(main, principal), Entry.credit(fund, principal)));
     }
     return postings;
@@ -422,7 +438,7 @@ if (contract.getSchedule().stream().allMatch(PaymentItem::isPaid)) {
 
 \section{Тестирование}
 
-Сервис кредитов покрыт 73 тестами (таблица~\ref{tab:tests}). Как и в предыдущей работе,
+Сервис кредитов покрыт 78 тестами (таблица~\ref{tab:tests}). Как и в предыдущей работе,
 главная книга в тестах заменена двойником \texttt{InMemoryLedger} из тестовой части
 общей библиотеки, а REST-клиенты модулей <<Клиенты>> и <<Депозиты>> --- заглушками Mockito.
 
@@ -440,8 +456,9 @@ if (contract.getSchedule().stream().allMatch(PaymentItem::isPaid)) {
 \texttt{CreditFlowIT} & 7 & проводки по схеме, платежи, закрытие договора \\
 \texttt{CreditApiIT} & 23 & контроль данных договора, график, выдача через кассу \\
 \texttt{AtmProtocolIT} & 25 & протокол банкомата (лабораторная работа №\,4) \\
+\texttt{DemoCardsIT} & 5 & демонстрационные карты, ответы на трёх языках (лабораторная работа №\,4) \\
 \midrule
-Всего & 73 & \\
+Всего & 78 & \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -528,7 +545,8 @@ void annuityPaymentOnDueDate() {
 
 \sectioncenter{Заключение}
 
-В работе реализован микросервис кредитных операций с двумя программами банка <<Решение>>:
+В работе реализован микросервис кредитных операций с двумя программами по образцу банка
+<<Решение>>:
 кредитом с аннуитетным погашением и кредитом с ежемесячной уплатой процентов и возвратом
 суммы в конце срока. При заключении договора сервис проверяет условия программы, открывает
 по плану счетов текущий и процентный счета клиента, выделяет кредит из фонда развития банка
@@ -541,7 +559,7 @@ void annuityPaymentOnDueDate() {
 идемпотентность проводок --- реализованы один раз в главной книге и одинаково действуют для
 депозитов и кредитов, а отчёт о состоянии счетов объединяет счета обеих программ.
 
-Корректность расчётов и проводок подтверждена 73 автоматическими тестами.
+Корректность расчётов и проводок подтверждена 78 автоматическими тестами.
 
 \sectioncenter{Список использованных источников}
 

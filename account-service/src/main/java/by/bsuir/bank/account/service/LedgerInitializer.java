@@ -8,6 +8,7 @@ import by.bsuir.bank.account.dto.EntryRequest;
 import by.bsuir.bank.account.dto.OpenAccountRequest;
 import by.bsuir.bank.account.dto.OperationRequest;
 import by.bsuir.bank.account.repository.CurrencyRepository;
+import by.bsuir.bank.common.i18n.Localized;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -32,13 +33,13 @@ public class LedgerInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         currencies.findAll().forEach(currency -> {
             String code = currency.getCode();
-            ledger.open(new OpenAccountRequest(CASH, code, null, "Касса банка, " + code, null));
-            AccountView fund = ledger.open(new OpenAccountRequest(FUND, code, null, "Фонд развития банка, " + code, null));
+            ledger.open(new OpenAccountRequest(CASH, code, null, Localized.code("account.cash", code), null));
+            AccountView fund = ledger.open(new OpenAccountRequest(FUND, code, null, Localized.code("account.fund", code), null));
 
             BigDecimal capital = properties.fund().capital().get(code);
             if (capital != null && capital.signum() > 0) {
                 ledger.post(new BatchRequest("FUND-CAPITAL-" + code, null, null, List.of(
-                        new OperationRequest("Формирование фонда развития банка",
+                        new OperationRequest(Localized.code("posting.fund.capital"),
                                 List.of(new EntryRequest(fund.number(), Side.CREDIT, capital))))));
             }
         });

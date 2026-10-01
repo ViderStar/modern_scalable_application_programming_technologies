@@ -1,5 +1,6 @@
 package by.bsuir.bank.common.ledger;
 
+import by.bsuir.bank.common.i18n.Localized;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -37,8 +38,8 @@ public class InMemoryLedger implements LedgerApi {
         operationSeq = 0;
         date = START;
         for (String currency : List.of("BYN", "USD", "EUR")) {
-            put(CASH, currency, null, "Касса банка, " + currency, null, BigDecimal.ZERO);
-            put(FUND, currency, null, "Фонд развития банка, " + currency, null, CAPITAL);
+            put(CASH, currency, null, Localized.code("account.cash", currency), null, BigDecimal.ZERO);
+            put(FUND, currency, null, Localized.code("account.fund", currency), null, CAPITAL);
         }
     }
 
@@ -58,8 +59,22 @@ public class InMemoryLedger implements LedgerApi {
         return account(number).balance();
     }
 
+    /** Журнал операций; названия операций и счетов банка раскрываются на языке читающего. */
     public List<OperationInfo> journal() {
-        return batches.values().stream().flatMap(List::stream).toList();
+        return batches.values().stream().flatMap(List::stream).map(InMemoryLedger::localized).toList();
+    }
+
+    private static OperationInfo localized(OperationInfo operation) {
+        return new OperationInfo(operation.id(), operation.bankDate(), Localized.render(operation.description()),
+                operation.contractRef(), operation.entries().stream()
+                .map(e -> new OperationInfo.EntryInfo(e.account(), Localized.render(e.accountName()), e.chartCode(),
+                        e.side(), e.amount()))
+                .toList());
+    }
+
+    private static AccountInfo localized(AccountInfo a) {
+        return new AccountInfo(a.number(), a.chartCode(), a.chartName(), a.activity(), a.activityTitle(), a.currency(),
+                Localized.render(a.name()), a.clientId(), a.contractRef(), a.debit(), a.credit(), a.balance());
     }
 
     @Override
@@ -89,7 +104,8 @@ public class InMemoryLedger implements LedgerApi {
 
     @Override
     public List<AccountInfo> accounts(String contractRef) {
-        return accounts.values().stream().filter(a -> contractRef.equals(a.contractRef())).toList();
+        return accounts.values().stream().filter(a -> contractRef.equals(a.contractRef()))
+                .map(InMemoryLedger::localized).toList();
     }
 
     @Override
@@ -118,7 +134,7 @@ public class InMemoryLedger implements LedgerApi {
     @Override
     public List<OperationInfo> post(Batch batch) {
         if (batches.containsKey(batch.batchKey())) {
-            return batches.get(batch.batchKey());
+            return batches.get(batch.batchKey()).stream().map(InMemoryLedger::localized).toList();
         }
         Map<String, AccountInfo> draft = new LinkedHashMap<>(accounts);
         List<OperationInfo> posted = new ArrayList<>();
@@ -138,7 +154,8 @@ public class InMemoryLedger implements LedgerApi {
             for (Entry entry : posting.entries()) {
                 if (draft.get(entry.account()).balance().signum() < 0) {
                     throw error(HttpStatus.CONFLICT, "INSUFFICIENT_FUNDS",
-                            "Недостаточно средств на счёте " + entry.account() + " для операции «" + posting.description() + "»");
+                            "Недостаточно средств на счёте " + entry.account() + " для операции «"
+                                    + Localized.render(posting.description()) + "»");
                 }
             }
             posted.add(new OperationInfo(++operationSeq, batch.bankDate() != null ? batch.bankDate() : date,
@@ -146,7 +163,7 @@ public class InMemoryLedger implements LedgerApi {
         }
         accounts.putAll(draft);
         batches.put(batch.batchKey(), posted);
-        return posted;
+        return posted.stream().map(InMemoryLedger::localized).toList();
     }
 
     @Override

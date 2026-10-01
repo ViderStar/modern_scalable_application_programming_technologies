@@ -15,7 +15,7 @@ import static by.bsuir.bank.common.api.CommonExceptionHandler.REQUIRED;
 public record DepositRequest(
 
         @NotBlank(message = REQUIRED)
-        @Pattern(regexp = NUMBER_FORMAT, message = "Формат номера договора: Д-000001")
+        @Pattern(regexp = NUMBER_FORMAT, message = "{deposit.numberFormat}")
         String number,
 
         @NotNull(message = REQUIRED)
@@ -28,15 +28,15 @@ public record DepositRequest(
         Long clientId,
 
         @NotNull(message = REQUIRED)
-        @Positive(message = "Сумма должна быть больше нуля")
-        @Digits(integer = 12, fraction = 2, message = "Денежная сумма: не более 2 знаков после запятой")
+        @Positive(message = "{validation.amountPositive}")
+        @Digits(integer = 12, fraction = 2, message = "{validation.amountFormat}")
         BigDecimal amount,
 
         @NotNull(message = REQUIRED)
         BigDecimal rate,
 
         @NotNull(message = REQUIRED)
-        @Positive(message = "Срок должен быть больше нуля")
+        @Positive(message = "{validation.termPositive}")
         Integer termMonths,
 
         @NotNull(message = REQUIRED)

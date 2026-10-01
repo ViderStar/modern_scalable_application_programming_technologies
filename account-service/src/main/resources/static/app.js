@@ -1,6 +1,6 @@
 /* Web-клиент главной книги: отчёт о состоянии счетов, журнал проводок, план счетов, закрытие дня. */
 
-const app = Vue.createApp({
+const app = Bank.createApp({
   data() {
     return {
       tab: 'report',           // report | journal | chart
@@ -55,8 +55,8 @@ const app = Vue.createApp({
     <main>
       <div class="toolbar">
         <div>
-          <h1>Счета банка</h1>
-          <p class="subtitle">Отчёт о состоянии счетов и процедура «Закрытие банковского дня»</p>
+          <h1>{{ t('accounts.title') }}</h1>
+          <p class="subtitle">{{ t('accounts.subtitle') }}</p>
         </div>
         <bank-day @changed="closed" @failed="e => error = e.message"></bank-day>
       </div>
@@ -64,23 +64,23 @@ const app = Vue.createApp({
       <div v-if="error" id="error" class="alert error">{{ error }}</div>
 
       <div class="stats">
-        <div class="stat"><div class="label">Отчёт на дату</div><div class="value">{{ date(report.bankDate) }}</div></div>
-        <div class="stat"><div class="label">Счетов в отчёте</div><div class="value" id="accounts-count">{{ accounts.length }}</div></div>
-        <div class="stat"><div class="label">Фонд развития, {{ currency }}</div><div class="value">{{ fund ? money(fund.balance) : '—' }}</div></div>
-        <div class="stat"><div class="label">Касса, {{ currency }}</div><div class="value">{{ cash ? money(cash.balance) : '—' }}</div></div>
+        <div class="stat"><div class="label">{{ t('accounts.reportDate') }}</div><div class="value">{{ date(report.bankDate) }}</div></div>
+        <div class="stat"><div class="label">{{ t('accounts.count') }}</div><div class="value" id="accounts-count">{{ accounts.length }}</div></div>
+        <div class="stat"><div class="label">{{ t('accounts.fund', currency) }}</div><div class="value">{{ fund ? money(fund.balance) : '—' }}</div></div>
+        <div class="stat"><div class="label">{{ t('accounts.cash', currency) }}</div><div class="value">{{ cash ? money(cash.balance) : '—' }}</div></div>
       </div>
 
       <div v-if="events.length" id="events" class="alert info">
-        <b>Протокол закрытия дня</b>
+        <b>{{ t('events.title') }}</b>
         <div v-for="(event, i) in events.slice(-12)" :key="i">{{ event }}</div>
-        <div v-if="events.length > 12" class="muted">… всего записей: {{ events.length }}</div>
+        <div v-if="events.length > 12" class="muted">{{ t('events.more', events.length) }}</div>
       </div>
 
       <div class="toolbar">
         <div style="display: flex; gap: 6px">
-          <button :class="{ primary: tab === 'report' }" @click="tab = 'report'">Отчёт по счетам</button>
-          <button :class="{ primary: tab === 'journal' }" @click="tab = 'journal'">Журнал проводок</button>
-          <button :class="{ primary: tab === 'chart' }" @click="tab = 'chart'">План счетов</button>
+          <button id="tab-report" :class="{ primary: tab === 'report' }" @click="tab = 'report'">{{ t('accounts.tabReport') }}</button>
+          <button id="tab-journal" :class="{ primary: tab === 'journal' }" @click="tab = 'journal'">{{ t('accounts.tabJournal') }}</button>
+          <button id="tab-chart" :class="{ primary: tab === 'chart' }" @click="tab = 'chart'">{{ t('accounts.tabChart') }}</button>
         </div>
         <div v-if="tab === 'report'" style="display: flex; gap: 6px">
           <button v-for="c in currencies" :key="c" class="small" :class="{ primary: c === currency }" @click="currency = c">{{ c }}</button>
@@ -91,8 +91,9 @@ const app = Vue.createApp({
         <table id="report">
           <thead>
             <tr>
-              <th>Номер счёта</th><th>Код</th><th>Название счёта</th><th>Активность</th><th>Договор</th>
-              <th class="num">Дебет</th><th class="num">Кредит</th><th class="num">Сальдо</th>
+              <th>{{ t('table.account') }}</th><th>{{ t('table.code') }}</th><th>{{ t('accounts.name') }}</th>
+              <th>{{ t('table.activity') }}</th><th>{{ t('table.contract') }}</th>
+              <th class="num">{{ t('table.debit') }}</th><th class="num">{{ t('table.credit') }}</th><th class="num">{{ t('table.balance') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -109,7 +110,7 @@ const app = Vue.createApp({
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="5">Итого обороты, {{ currency }}</td>
+              <td colspan="5">{{ t('accounts.totals', currency) }}</td>
               <td class="num">{{ money(total.debit) }}</td>
               <td class="num">{{ money(total.credit) }}</td>
               <td></td>
@@ -121,7 +122,8 @@ const app = Vue.createApp({
       <div v-if="tab === 'journal'" class="card">
         <table id="journal">
           <thead>
-            <tr><th>№</th><th>Дата</th><th>Операция</th><th>Договор</th><th>Счёт</th><th class="num">Дебет</th><th class="num">Кредит</th></tr>
+            <tr><th>№</th><th>{{ t('table.date') }}</th><th>{{ t('table.operation') }}</th><th>{{ t('table.contract') }}</th>
+                <th>{{ t('table.accountShort') }}</th><th class="num">{{ t('table.debit') }}</th><th class="num">{{ t('table.credit') }}</th></tr>
           </thead>
           <tbody>
             <template v-for="op in journal" :key="op.id">
@@ -137,25 +139,22 @@ const app = Vue.createApp({
             </template>
           </tbody>
         </table>
-        <div v-if="!journal.length" class="empty">Проводок пока нет</div>
+        <div v-if="!journal.length" class="empty">{{ t('accounts.noPostings') }}</div>
       </div>
 
       <div v-if="tab === 'chart'" class="card">
         <table id="chart">
-          <thead><tr><th>Балансовый счёт</th><th>Наименование</th><th>Активность</th></tr></thead>
+          <thead><tr><th>{{ t('accounts.chartCode') }}</th><th>{{ t('accounts.chartName') }}</th><th>{{ t('table.activity') }}</th></tr></thead>
           <tbody>
             <tr v-for="c in chart" :key="c.code">
               <td class="mono">{{ c.code }}</td>
               <td>{{ c.name }}</td>
-              <td>{{ { ACTIVE: 'Активный', PASSIVE: 'Пассивный', ACTIVE_PASSIVE: 'Активно-пассивный' }[c.activity] }}</td>
+              <td>{{ c.activityTitle }}</td>
             </tr>
           </tbody>
         </table>
       </div>
     </main>`,
-});
+}, 'accounts.page');
 
-app.component('bank-nav', Bank.navComponent);
-app.component('bank-day', Bank.dayComponent);
-app.directive('mask', Bank.maskDirective);
 app.mount('#app');

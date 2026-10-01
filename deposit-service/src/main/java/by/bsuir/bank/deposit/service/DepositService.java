@@ -3,6 +3,7 @@ package by.bsuir.bank.deposit.service;
 import by.bsuir.bank.common.api.BankException;
 import by.bsuir.bank.common.client.ClientApi;
 import by.bsuir.bank.common.client.ClientInfo;
+import by.bsuir.bank.common.i18n.Messages;
 import by.bsuir.bank.common.ledger.Batch;
 import by.bsuir.bank.common.ledger.LedgerApi;
 import by.bsuir.bank.common.ledger.OpenAccount;
@@ -71,12 +72,12 @@ public class DepositService {
     @Transactional
     public DepositView open(DepositRequest request) {
         DepositProduct product = products.findById(request.productId())
-                .orElseThrow(() -> BankException.fields(Map.of("productId", "Вид депозита отсутствует в справочнике")));
+                .orElseThrow(() -> BankException.fields(Map.of("productId", Messages.get("deposit.unknownProduct"))));
         LocalDate today = ledger.bankDay().date();
         checkTerms(request, product, today);
         if (contracts.existsByNumber(request.number())) {
-            throw new BankException(HttpStatus.CONFLICT, "DUPLICATE_CONTRACT", "Договор уже существует",
-                    Map.of("number", "Договор с таким номером уже заключён"));
+            throw new BankException(HttpStatus.CONFLICT, "DUPLICATE_CONTRACT", Messages.get("contract.duplicate"),
+                    Map.of("number", Messages.get("contract.duplicateNumber")));
         }
         ClientInfo client = findClient(request.clientId());
 
@@ -111,23 +112,23 @@ public class DepositService {
     private void checkTerms(DepositRequest request, DepositProduct product, LocalDate today) {
         Map<String, String> errors = new LinkedHashMap<>();
         if (!product.getCurrency().equals(request.currency())) {
-            errors.put("productId", "Программа недоступна в валюте " + request.currency());
+            errors.put("productId", Messages.get("contract.productCurrency", request.currency()));
         }
         if (request.amount().compareTo(product.getMinAmount()) < 0) {
-            errors.put("amount", "Минимальная сумма вклада — " + product.getMinAmount() + " " + product.getCurrency());
+            errors.put("amount", Messages.get("deposit.minAmount", product.getMinAmount(), product.getCurrency()));
         }
         if (request.rate().compareTo(product.getRate()) != 0) {
-            errors.put("rate", "Ставка по программе — " + product.getRate() + " %");
+            errors.put("rate", Messages.get("contract.rate", product.getRate()));
         }
         if (request.termMonths() < product.getMinTermMonths() || request.termMonths() > product.getMaxTermMonths()) {
-            errors.put("termMonths", "Срок по программе: от " + product.getMinTermMonths()
-                    + " до " + product.getMaxTermMonths() + " мес.");
+            errors.put("termMonths", Messages.get("contract.termRange",
+                    product.getMinTermMonths(), product.getMaxTermMonths()));
         }
         if (!request.startDate().equals(today)) {
-            errors.put("startDate", "Договор заключается текущим банковским днём: " + RU_DATE.format(today));
+            errors.put("startDate", Messages.get("contract.startDate", RU_DATE.format(today)));
         }
         if (!request.endDate().equals(request.startDate().plusMonths(request.termMonths()))) {
-            errors.put("endDate", "Дата окончания не соответствует сроку договора");
+            errors.put("endDate", Messages.get("contract.endDate"));
         }
         if (!errors.isEmpty()) {
             throw BankException.fields(errors);
@@ -138,7 +139,7 @@ public class DepositService {
         try {
             return clients.get(clientId);
         } catch (HttpClientErrorException.NotFound e) {
-            throw BankException.fields(Map.of("clientId", "Клиент не найден в модуле «Клиенты»"));
+            throw BankException.fields(Map.of("clientId", Messages.get("contract.clientNotFound")));
         }
     }
 
@@ -147,10 +148,10 @@ public class DepositService {
     public DepositView withdraw(Long id) {
         DepositContract contract = find(id);
         if (!contract.isActive()) {
-            throw BankException.conflict("CONTRACT_CLOSED", "Договор " + contract.getNumber() + " уже закрыт");
+            throw BankException.conflict("CONTRACT_CLOSED", Messages.get("deposit.closed", contract.getNumber()));
         }
         if (contract.getProduct().getKind() == DepositKind.IRREVOCABLE) {
-            throw BankException.conflict("IRREVOCABLE", "Безотзывный вклад нельзя забрать до окончания срока договора");
+            throw BankException.conflict("IRREVOCABLE", Messages.get("deposit.irrevocable"));
         }
         LocalDate today = ledger.bankDay().date();
         payInterest(contract, today);
@@ -181,7 +182,7 @@ public class DepositService {
             post(key(number, "ACCRUE-" + date), number, date,
                     List.of(DepositPostings.accrual(fund(currency), contract.getInterestAccount(), delta)));
             contract.setAccrued(target);
-            events.add(RU_DATE.format(date) + ": " + number + " — начислены проценты " + delta + " " + currency);
+            events.add(Messages.get("deposit.event.accrued", RU_DATE.format(date), number, delta, currency));
         }
 
         int months = InterestCalculator.fullMonths(contract.getStartDate(), upTo);
@@ -190,12 +191,12 @@ public class DepositService {
             BigDecimal paid = payInterest(contract, date);
             contract.setPaidMonths(months);
             if (paid.signum() > 0) {
-                events.add(RU_DATE.format(date) + ": " + number + " — выплачены проценты " + paid + " " + currency);
+                events.add(Messages.get("deposit.event.paid", RU_DATE.format(date), number, paid, currency));
             }
         }
         if (matured) {
             close(contract, date);
-            events.add(RU_DATE.format(date) + ": " + number + " — срок договора истёк, вклад " + contract.getAmount() + " " + currency + " возвращён");
+            events.add(Messages.get("deposit.event.matured", RU_DATE.format(date), number, contract.getAmount(), currency));
         }
         return events;
     }
@@ -235,6 +236,6 @@ public class DepositService {
     }
 
     private DepositContract find(Long id) {
-        return contracts.findById(id).orElseThrow(() -> BankException.notFound("Депозитный договор не найден"));
+        return contracts.findById(id).orElseThrow(() -> BankException.notFound(Messages.get("deposit.notFound")));
     }
 }

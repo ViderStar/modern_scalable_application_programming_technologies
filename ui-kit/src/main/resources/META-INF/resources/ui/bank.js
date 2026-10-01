@@ -1,18 +1,53 @@
-/* Общие помощники web-клиентов банка: REST-вызовы, маски ввода, форматирование. */
+/* Общие помощники web-клиентов банка: язык интерфейса, REST-вызовы, маски ввода, форматирование. */
 const Bank = {
 
   /* Адреса web-клиентов остальных микросервисов для общей навигации. */
   services: [
-    { key: 'clients',  title: 'Клиенты',  port: 8081 },
-    { key: 'accounts', title: 'Счета',    port: 8082 },
-    { key: 'deposits', title: 'Депозиты', port: 8083 },
-    { key: 'credits',  title: 'Кредиты',  port: 8084 },
-    { key: 'atm',      title: 'Банкомат', port: 8085 },
+    { key: 'clients',  port: 8081 },
+    { key: 'accounts', port: 8082 },
+    { key: 'deposits', port: 8083 },
+    { key: 'credits',  port: 8084 },
+    { key: 'atm',      port: 8085 },
   ],
 
-  /* REST-вызов: при ошибке бросает { status, message, fields } из тела ответа сервиса. */
+  /* ---------- язык интерфейса ---------- */
+
+  languages: [
+    { code: 'ru', title: 'Рус', locale: 'ru-RU' },
+    { code: 'en', title: 'Eng', locale: 'en-GB' },
+    { code: 'be', title: 'Бел', locale: 'be-BY' },
+  ],
+
+  /* Выбор хранится в cookie: она общая для всех портов localhost, поэтому язык един для всех пяти web-клиентов. */
+  lang: (document.cookie.match(/(?:^|; )bank_lang=(ru|en|be)/) || [])[1] || 'ru',
+
+  /* Словари: общая часть — в ui-kit/i18n.js, тексты приложения — в его собственном i18n.js. */
+  messages: { ru: {}, en: {}, be: {} },
+
+  addMessages(dictionary) {
+    for (const lang of Object.keys(dictionary)) Object.assign(Bank.messages[lang], dictionary[lang]);
+  },
+
+  /* Текст по ключу на выбранном языке; {0}, {1} заменяются аргументами. Непереведённый ключ берётся из русского словаря. */
+  t(key, ...args) {
+    const text = Bank.messages[Bank.lang][key] ?? Bank.messages.ru[key] ?? key;
+    return text.replace(/\{(\d+)\}/g, (match, index) => args[index] ?? '');
+  },
+
+  setLang(code) {
+    document.cookie = 'bank_lang=' + code + '; path=/; max-age=31536000; SameSite=Lax';
+    location.reload();
+  },
+
+  locale() {
+    return Bank.languages.find(language => language.code === Bank.lang).locale;
+  },
+
+  /* ---------- REST ---------- */
+
+  /* REST-вызов: язык передаётся сервису заголовком Accept-Language; при ошибке бросает { status, message, fields }. */
   async api(method, url, body) {
-    const options = { method, headers: { 'Accept': 'application/json' } };
+    const options = { method, headers: { 'Accept': 'application/json', 'Accept-Language': Bank.lang } };
     if (body !== undefined) {
       options.headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(body);
@@ -21,19 +56,21 @@ const Bank = {
     try {
       response = await fetch(url, options);
     } catch (e) {
-      throw { status: 0, message: 'Сервис недоступен', fields: {} };
+      throw { status: 0, message: Bank.t('common.unavailable'), fields: {} };
     }
     const text = await response.text();
     const data = text ? JSON.parse(text) : null;
     if (!response.ok) {
       throw {
         status: response.status,
-        message: (data && data.message) || 'Ошибка ' + response.status,
+        message: (data && data.message) || Bank.t('common.error', response.status),
         fields: (data && data.fields) || {},
       };
     }
     return data;
   },
+
+  /* ---------- ввод и форматирование ---------- */
 
   /* Маска ввода: # — цифра, A — латинская буква (в верхнем регистре), остальное — литералы. */
   mask(value, pattern) {
@@ -80,12 +117,26 @@ const Bank = {
 
   money(value) {
     if (value === null || value === undefined || value === '') return '';
-    return Number(value).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return Number(value).toLocaleString(Bank.locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   },
 
   /* ISO-дата 2026-10-01 -> 01.10.2026 */
   date(iso) {
     return iso ? String(iso).split('-').reverse().join('.') : '';
+  },
+
+  /* ---------- общие компоненты ---------- */
+
+  /* Создание приложения Vue: функция t доступна в шаблонах, подключены шапка, панель дня и маски. */
+  createApp(options, pageTitleKey) {
+    document.documentElement.lang = Bank.lang;
+    document.title = Bank.t(pageTitleKey) + ' — BankEt';
+    const app = Vue.createApp(options);
+    app.config.globalProperties.t = Bank.t;
+    app.component('bank-nav', Bank.navComponent);
+    app.component('bank-day', Bank.dayComponent);
+    app.directive('mask', Bank.maskDirective);
+    return app;
   },
 
   /* Панель банковского дня: текущая дата и процедура «Закрытие банковского дня». */
@@ -118,27 +169,39 @@ const Bank = {
     },
     template: `
       <div class="bankday">
-        <span class="label">Банковский день</span>
+        <span class="label">{{ t('day.label') }}</span>
         <b id="bank-date">{{ format(date) }}</b>
-        <button id="btn-close-day" class="primary" :disabled="busy" @click="close(1)">Закрыть день</button>
+        <button id="btn-close-day" class="primary" :disabled="busy" @click="close(1)">{{ t('day.close') }}</button>
         <input id="days" type="text" v-model.number="days" maxlength="4">
-        <button id="btn-close-days" :disabled="busy || !(days > 0)" @click="close(days)">Закрыть дней</button>
+        <button id="btn-close-days" :disabled="busy || !(days > 0)" @click="close(days)">{{ t('day.closeDays') }}</button>
       </div>`,
   },
 
-  /* Шапка с переходами между web-клиентами микросервисов. */
+  /* Шапка: переходы между web-клиентами микросервисов и выбор языка. */
   navComponent: {
     props: ['active'],
     data() {
-      return { services: Bank.services, host: location.protocol + '//' + location.hostname };
+      return {
+        services: Bank.services,
+        languages: Bank.languages,
+        lang: Bank.lang,
+        host: location.protocol + '//' + location.hostname,
+      };
+    },
+    methods: {
+      setLang: code => Bank.setLang(code),
     },
     template: `
       <header class="topbar">
-        <div class="brand">Банк «Решение» <span>учебная АБС</span></div>
+        <div class="brand">BankEt <span>{{ t('brand.subtitle') }}</span></div>
         <nav>
           <a v-for="s in services" :key="s.key" :href="host + ':' + s.port + '/'"
-             :class="{ active: s.key === active }">{{ s.title }}</a>
+             :class="{ active: s.key === active }">{{ t('nav.' + s.key) }}</a>
         </nav>
+        <div class="languages">
+          <button v-for="l in languages" :key="l.code" :id="'lang-' + l.code"
+                  :class="{ active: l.code === lang }" @click="setLang(l.code)">{{ l.title }}</button>
+        </div>
       </header>`,
   },
 };

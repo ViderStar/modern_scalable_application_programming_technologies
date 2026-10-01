@@ -47,7 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Интеграционные тесты банковской стороны протокола «банк — банкомат». */
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:${random.uuid};DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:${random.uuid};DB_CLOSE_DELAY=-1",
+        "bank.demo.enabled=false"})
 @AutoConfigureMockMvc
 @Import(TestLedgerConfig.class)
 class AtmProtocolIT {

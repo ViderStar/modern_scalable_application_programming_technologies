@@ -45,6 +45,10 @@ body {
 }
 .topbar nav a:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .topbar nav a.active { background: var(--blue); color: #fff; }
+.topbar .languages { margin-left: auto; display: flex; gap: 2px; background: rgba(255, 255, 255, .08); border-radius: 6px; padding: 2px; }
+.topbar .languages button { background: none; border: none; color: #c9d6e8; padding: 4px 10px; font-size: 13px; border-radius: 4px; }
+.topbar .languages button:hover { color: #fff; }
+.topbar .languages button.active { background: #fff; color: var(--navy); font-weight: 600; }
 
 main { max-width: 1240px; margin: 24px auto 48px; padding: 0 24px; }
 

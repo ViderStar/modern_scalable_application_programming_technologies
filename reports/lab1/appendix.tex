@@ -9,6 +9,17 @@
 \lstinputlisting[style=xml, style=appendix, caption={ui-kit/pom.xml}]{../../ui-kit/pom.xml}
 \lstinputlisting[style=css, style=appendix, caption={ui-kit/src/main/resources/META-INF/resources/ui/bank.css}]{../../ui-kit/src/main/resources/META-INF/resources/ui/bank.css}
 \lstinputlisting[style=js, style=appendix, caption={ui-kit/src/main/resources/META-INF/resources/ui/bank.js}]{../../ui-kit/src/main/resources/META-INF/resources/ui/bank.js}
+\lstinputlisting[style=js, style=appendix, caption={ui-kit/src/main/resources/META-INF/resources/ui/i18n.js}]{../../ui-kit/src/main/resources/META-INF/resources/ui/i18n.js}
+
+\subsection*{Локализация (bank-common, пакет i18n)}
+
+\lstinputlisting[style=properties, style=appendix, caption={bank-common/src/main/resources/common-messages.properties}]{../../bank-common/src/main/resources/common-messages.properties}
+\lstinputlisting[style=properties, style=appendix, caption={bank-common/src/main/resources/common-messages\_be.properties}]{../../bank-common/src/main/resources/common-messages_be.properties}
+\lstinputlisting[style=properties, style=appendix, caption={bank-common/src/main/resources/common-messages\_en.properties}]{../../bank-common/src/main/resources/common-messages_en.properties}
+\lstinputlisting[style=java, style=appendix, caption={bank-common/src/main/java/by/bsuir/bank/common/i18n/I18nConfig.java}]{../../bank-common/src/main/java/by/bsuir/bank/common/i18n/I18nConfig.java}
+\lstinputlisting[style=java, style=appendix, caption={bank-common/src/main/java/by/bsuir/bank/common/i18n/Localized.java}]{../../bank-common/src/main/java/by/bsuir/bank/common/i18n/Localized.java}
+\lstinputlisting[style=java, style=appendix, caption={bank-common/src/main/java/by/bsuir/bank/common/i18n/Messages.java}]{../../bank-common/src/main/java/by/bsuir/bank/common/i18n/Messages.java}
+\lstinputlisting[style=java, style=appendix, caption={bank-common/src/test/java/by/bsuir/bank/common/i18n/MessagesTest.java}]{../../bank-common/src/test/java/by/bsuir/bank/common/i18n/MessagesTest.java}
 
 \subsection*{Микросервис «Клиенты» (client-service)}
 
@@ -16,6 +27,9 @@
 \lstinputlisting[style=yaml, style=appendix, caption={client-service/src/main/resources/application.yml}]{../../client-service/src/main/resources/application.yml}
 \lstinputlisting[style=sql, style=appendix, caption={client-service/src/main/resources/schema.sql}]{../../client-service/src/main/resources/schema.sql}
 \lstinputlisting[style=sql, style=appendix, caption={client-service/src/main/resources/data.sql}]{../../client-service/src/main/resources/data.sql}
+\lstinputlisting[style=properties, style=appendix, caption={client-service/src/main/resources/messages.properties}]{../../client-service/src/main/resources/messages.properties}
+\lstinputlisting[style=properties, style=appendix, caption={client-service/src/main/resources/messages\_be.properties}]{../../client-service/src/main/resources/messages_be.properties}
+\lstinputlisting[style=properties, style=appendix, caption={client-service/src/main/resources/messages\_en.properties}]{../../client-service/src/main/resources/messages_en.properties}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/main/java/by/bsuir/bank/client/domain/Citizenship.java}]{../../client-service/src/main/java/by/bsuir/bank/client/domain/Citizenship.java}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/main/java/by/bsuir/bank/client/domain/City.java}]{../../client-service/src/main/java/by/bsuir/bank/client/domain/City.java}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/main/java/by/bsuir/bank/client/domain/Client.java}]{../../client-service/src/main/java/by/bsuir/bank/client/domain/Client.java}
@@ -45,7 +59,9 @@
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/main/java/by/bsuir/bank/client/web/DictionaryController.java}]{../../client-service/src/main/java/by/bsuir/bank/client/web/DictionaryController.java}
 \lstinputlisting[style=xml, style=appendix, caption={client-service/src/main/resources/static/index.html}]{../../client-service/src/main/resources/static/index.html}
 \lstinputlisting[style=js, style=appendix, caption={client-service/src/main/resources/static/app.js}]{../../client-service/src/main/resources/static/app.js}
+\lstinputlisting[style=js, style=appendix, caption={client-service/src/main/resources/static/i18n.js}]{../../client-service/src/main/resources/static/i18n.js}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/test/java/by/bsuir/bank/client/ClientApiIT.java}]{../../client-service/src/test/java/by/bsuir/bank/client/ClientApiIT.java}
+\lstinputlisting[style=java, style=appendix, caption={client-service/src/test/java/by/bsuir/bank/client/ClientLanguageIT.java}]{../../client-service/src/test/java/by/bsuir/bank/client/ClientLanguageIT.java}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/test/java/by/bsuir/bank/client/ClientRequestValidationTest.java}]{../../client-service/src/test/java/by/bsuir/bank/client/ClientRequestValidationTest.java}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/test/java/by/bsuir/bank/client/ClientServiceTest.java}]{../../client-service/src/test/java/by/bsuir/bank/client/ClientServiceTest.java}
 \lstinputlisting[style=java, style=appendix, caption={client-service/src/test/java/by/bsuir/bank/client/ClientUiIT.java}]{../../client-service/src/test/java/by/bsuir/bank/client/ClientUiIT.java}

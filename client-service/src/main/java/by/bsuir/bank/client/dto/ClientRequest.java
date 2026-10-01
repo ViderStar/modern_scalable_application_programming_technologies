@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 /**
  * Данные формы клиента. Серверная валидация (вторая линия после проверки в браузере):
  * обязательность — @NotBlank/@NotNull, маски — @Pattern, даты — @DateText.
+ * Сообщения заданы ключами {…}: текст берётся из messages*.properties на языке запроса.
  */
 public record ClientRequest(
 
@@ -32,15 +33,15 @@ public record ClientRequest(
         @NotBlank(message = REQUIRED) @DateText
         String birthDate,
 
-        @NotBlank(message = REQUIRED) @Pattern(regexp = "^[MF]$", message = "Выберите пол")
+        @NotBlank(message = REQUIRED) @Pattern(regexp = "^[MF]$", message = "{validation.sex}")
         String sex,
 
         @NotBlank(message = REQUIRED)
-        @Pattern(regexp = Masks.PASSPORT_SERIES, message = "Серия — две заглавные латинские буквы")
+        @Pattern(regexp = Masks.PASSPORT_SERIES, message = "{validation.passportSeries}")
         String passportSeries,
 
         @NotBlank(message = REQUIRED)
-        @Pattern(regexp = Masks.PASSPORT_NUMBER, message = "Номер паспорта — семь цифр")
+        @Pattern(regexp = Masks.PASSPORT_NUMBER, message = "{validation.passportNumber}")
         String passportNumber,
 
         @NotBlank(message = REQUIRED) @Size(max = 200, message = TOO_LONG)
@@ -50,7 +51,7 @@ public record ClientRequest(
         String issueDate,
 
         @NotBlank(message = REQUIRED)
-        @Pattern(regexp = Masks.IDENTIFICATION_NUMBER, message = "Формат: 7 цифр, буква, 3 цифры, 2 буквы, цифра")
+        @Pattern(regexp = Masks.IDENTIFICATION_NUMBER, message = "{validation.identificationNumber}")
         String identificationNumber,
 
         @NotBlank(message = REQUIRED) @Size(max = 200, message = TOO_LONG)
@@ -62,13 +63,13 @@ public record ClientRequest(
         @NotBlank(message = REQUIRED) @Size(max = 200, message = TOO_LONG)
         String residenceAddress,
 
-        @Pattern(regexp = Masks.HOME_PHONE, message = "Формат: 293-88-44")
+        @Pattern(regexp = Masks.HOME_PHONE, message = "{validation.homePhone}")
         String homePhone,
 
-        @Pattern(regexp = Masks.MOBILE_PHONE, message = "Формат: +375 (29) 314-15-92")
+        @Pattern(regexp = Masks.MOBILE_PHONE, message = "{validation.mobilePhone}")
         String mobilePhone,
 
-        @Size(max = 100, message = TOO_LONG) @Pattern(regexp = Masks.EMAIL, message = "Некорректный e-mail")
+        @Size(max = 100, message = TOO_LONG) @Pattern(regexp = Masks.EMAIL, message = "{validation.email}")
         String email,
 
         @NotNull(message = REQUIRED)
@@ -86,14 +87,14 @@ public record ClientRequest(
         @NotNull(message = REQUIRED)
         Boolean pensioner,
 
-        @DecimalMin(value = "0.00", message = "Доход не может быть отрицательным")
-        @Digits(integer = 12, fraction = 2, message = "Денежная сумма: до 12 цифр и не более 2 знаков после запятой")
+        @DecimalMin(value = "0.00", message = "{validation.incomeNegative}")
+        @Digits(integer = 12, fraction = 2, message = "{validation.incomeFormat}")
         BigDecimal monthlyIncome
 ) {
 
-    public static final String REQUIRED = "Обязательное поле";
-    public static final String TOO_LONG = "Слишком длинное значение";
-    public static final String LETTERS_ONLY = "Допустимы только буквы";
+    public static final String REQUIRED = "{validation.required}";
+    public static final String TOO_LONG = "{validation.tooLong}";
+    public static final String LETTERS_ONLY = "{validation.lettersOnly}";
 
     /** Пробелы по краям отбрасываются до проверок: «пробел вместо имени» превращается в пустую строку. */
     public ClientRequest {

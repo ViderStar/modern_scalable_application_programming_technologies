@@ -112,7 +112,7 @@
 \usepackage{fancyvrb}
 
 % Под XeTeX listings выводит символы Юникода вне очереди: <th>ФИО</th> превращается в <thФИО></th>.
-% Кириллица и типографские знаки объявляются «буквами», тогда порядок символов сохраняется.
+% Кириллица (включая белорусские і, ў) и типографские знаки объявляются «буквами», тогда порядок символов сохраняется.
 \ifPDFTeX\else
 \makeatletter
 \lst@InputCatcodes
@@ -136,6 +136,7 @@
   ^^^^0448^^^^0449^^^^044a^^^^044b^^^^044c^^^^044d^^^^044e^^^^044f%
   ^^^^0401^^^^0451^^^^2013^^^^2014^^^^2026^^^^2116^^^^2212^^^^25ba%
   ^^^^25c4^^^^25cf%
+  ^^^^0406^^^^0456^^^^040e^^^^045e^^^^201c^^^^201d^^^^2019%
   ^^00}
 \lst@RestoreCatcodes
 \makeatother
@@ -199,6 +200,7 @@
 \lstdefinestyle{yaml}{language=YAML}
 \lstdefinestyle{xml}{language=XML}
 \lstdefinestyle{css}{language=CSS}
+\lstdefinestyle{properties}{language={}, morecomment=[l]{\#}}
 \lstdefinestyle{json}{language={}, stringstyle=\color{codestring}, morestring=[b]"}
 \lstdefinestyle{python}{language=Python}
 \lstdefinestyle{shell}{language=bash, keywordstyle=\mdseries}

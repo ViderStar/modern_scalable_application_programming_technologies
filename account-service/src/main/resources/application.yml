@@ -26,9 +26,10 @@ bank:
       USD: 5000000
       EUR: 5000000
   day-close:
-    # Сервисы, которые обрабатывают открытие нового банковского дня: начисляют проценты, проводят платежи
+    # Сервисы, которые обрабатывают открытие нового банковского дня: начисляют проценты, проводят платежи.
+    # name — ключ названия участника в словаре (participant.<name>)
     participants:
-      - name: Депозиты
+      - name: deposits
         url: ${DEPOSIT_SERVICE_URL:http://localhost:8083}
-      - name: Кредиты
+      - name: credits
         url: ${CREDIT_SERVICE_URL:http://localhost:8084}

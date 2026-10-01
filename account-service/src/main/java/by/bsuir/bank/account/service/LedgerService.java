@@ -19,6 +19,8 @@ import by.bsuir.bank.account.repository.CurrencyRepository;
 import by.bsuir.bank.account.repository.OperationRepository;
 import by.bsuir.bank.account.repository.PostingBatchRepository;
 import by.bsuir.bank.common.api.BankException;
+import by.bsuir.bank.common.i18n.Localized;
+import by.bsuir.bank.common.i18n.Messages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -56,9 +58,9 @@ public class LedgerService {
     @Transactional
     public AccountView open(OpenAccountRequest request) {
         ChartAccount chartAccount = chart.findById(request.chartCode())
-                .orElseThrow(() -> BankException.invalid("Балансового счёта " + request.chartCode() + " нет в плане счетов"));
+                .orElseThrow(() -> BankException.invalid(Messages.get("ledger.noChart", request.chartCode())));
         if (!currencies.existsById(request.currency())) {
-            throw BankException.invalid("Валюты " + request.currency() + " нет в справочнике");
+            throw BankException.invalid(Messages.get("ledger.noCurrency", request.currency()));
         }
         if (request.contractRef() != null) {
             var existing = accounts.findByContractRefAndChartCode(request.contractRef(), request.chartCode());
@@ -107,9 +109,9 @@ public class LedgerService {
             String currency = null;
             for (EntryRequest entry : item.entries()) {
                 Account account = locked.computeIfAbsent(entry.account(), number -> accounts.findByNumberForUpdate(number)
-                        .orElseThrow(() -> BankException.notFound("Счёт " + number + " не найден")));
+                        .orElseThrow(() -> BankException.notFound(Messages.get("ledger.accountNotFound", number))));
                 if (currency != null && !currency.equals(account.getCurrency())) {
-                    throw BankException.invalid("Счета одной операции должны быть в одной валюте");
+                    throw BankException.invalid(Messages.get("ledger.sameCurrency"));
                 }
                 currency = account.getCurrency();
                 account.apply(entry.side(), entry.amount());
@@ -127,15 +129,15 @@ public class LedgerService {
         if (account.getChart().getActivity() != Activity.ACTIVE_PASSIVE
                 && account.getBalance().compareTo(BigDecimal.ZERO) < 0) {
             throw new BankException(HttpStatus.CONFLICT, "INSUFFICIENT_FUNDS",
-                    "Недостаточно средств на счёте " + account.getNumber() + " («" + account.getName()
-                            + "») для операции «" + operation + "»");
+                    Messages.get("ledger.insufficient", account.getNumber(), Localized.render(account.getName()),
+                            Localized.render(operation)));
         }
     }
 
     @Transactional(readOnly = true)
     public AccountView get(String number) {
         return accounts.findByNumber(number).map(AccountView::from)
-                .orElseThrow(() -> BankException.notFound("Счёт " + number + " не найден"));
+                .orElseThrow(() -> BankException.notFound(Messages.get("ledger.accountNotFound", number)));
     }
 
     /** Собственный счёт банка — касса (1010) или фонд развития (7327) — в заданной валюте. */
@@ -144,7 +146,7 @@ public class LedgerService {
         return accounts.findFirstByChartCodeAndCurrencyAndOwnerCodeAndContractRefIsNull(chartCode, currency, BANK_OWNER)
                 .map(AccountView::from)
                 .orElseThrow(() -> BankException.notFound(
-                        "Счёт банка " + chartCode + " в валюте " + currency + " не открыт"));
+                        Messages.get("ledger.systemAccountNotFound", chartCode, currency)));
     }
 
     @Transactional(readOnly = true)

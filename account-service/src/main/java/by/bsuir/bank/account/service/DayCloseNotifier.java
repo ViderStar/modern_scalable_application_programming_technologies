@@ -1,5 +1,6 @@
 package by.bsuir.bank.account.service;
 
+import by.bsuir.bank.common.HttpApis;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -15,7 +16,7 @@ public class DayCloseNotifier {
     private final RestClient http;
 
     public DayCloseNotifier(RestClient.Builder builder) {
-        this.http = builder.build();
+        this.http = HttpApis.withLanguage(builder).build();      // участник отвечает на языке пользователя
     }
 
     /** Возвращает протокол операций, выполненных участником на дату нового банковского дня. */

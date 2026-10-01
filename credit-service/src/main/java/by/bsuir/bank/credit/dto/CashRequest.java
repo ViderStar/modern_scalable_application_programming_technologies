@@ -11,8 +11,8 @@ import static by.bsuir.bank.common.api.CommonExceptionHandler.REQUIRED;
 /** Выдача наличных с кредитного счёта через кассу. */
 public record CashRequest(
         @NotNull(message = REQUIRED)
-        @Positive(message = "Сумма должна быть больше нуля")
-        @Digits(integer = 12, fraction = 2, message = "Денежная сумма: не более 2 знаков после запятой")
+        @Positive(message = "{validation.amountPositive}")
+        @Digits(integer = 12, fraction = 2, message = "{validation.amountFormat}")
         BigDecimal amount
 ) {
 }
