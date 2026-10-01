@@ -1,0 +1,16 @@
+target/
+.idea/
+*.iml
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+logs/
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
