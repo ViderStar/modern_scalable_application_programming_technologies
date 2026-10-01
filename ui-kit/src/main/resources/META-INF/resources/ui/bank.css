@@ -133,3 +133,14 @@ legend { padding: 0 8px; color: var(--muted); font-size: 13px; text-transform: u
 
 .muted { color: var(--muted); }
 .right { text-align: right; }
+
+.bankday { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.bankday .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+.bankday b { font-size: 16px; margin-right: 8px; font-variant-numeric: tabular-nums; }
+.bankday input { width: 56px; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; text-align: right; }
+
+.details { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 20px; }
+.details .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+.details .value { font-weight: 600; }
+a.link { color: var(--blue); cursor: pointer; text-decoration: none; }
+a.link:hover { text-decoration: underline; }

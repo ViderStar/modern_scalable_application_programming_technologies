@@ -1,0 +1,28 @@
+server:
+  port: ${DEPOSIT_SERVICE_PORT:8083}
+
+spring:
+  application:
+    name: deposit-service
+  datasource:
+    url: jdbc:h2:mem:deposits;DB_CLOSE_DELAY=-1
+    username: sa
+  sql:
+    init:
+      mode: always
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+  http:
+    client:
+      connect-timeout: 2s
+      read-timeout: 120s
+
+bank:
+  services:
+    clients: ${CLIENT_SERVICE_URL:http://localhost:8081}
+    accounts: ${ACCOUNT_SERVICE_URL:http://localhost:8082}

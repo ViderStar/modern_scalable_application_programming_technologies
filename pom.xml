@@ -20,7 +20,10 @@
 
     <modules>
         <module>ui-kit</module>
+        <module>bank-common</module>
         <module>client-service</module>
+        <module>account-service</module>
+        <module>deposit-service</module>
     </modules>
 
     <properties>
@@ -34,6 +37,11 @@
             <dependency>
                 <groupId>by.bsuir.bank</groupId>
                 <artifactId>ui-kit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>by.bsuir.bank</groupId>
+                <artifactId>bank-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

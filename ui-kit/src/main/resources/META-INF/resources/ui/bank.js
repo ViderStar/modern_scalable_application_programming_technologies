@@ -83,6 +83,49 @@ const Bank = {
     return Number(value).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   },
 
+  /* ISO-дата 2026-10-01 -> 01.10.2026 */
+  date(iso) {
+    return iso ? String(iso).split('-').reverse().join('.') : '';
+  },
+
+  /* Панель банковского дня: текущая дата и процедура «Закрытие банковского дня». */
+  dayComponent: {
+    emits: ['changed', 'failed'],
+    data() {
+      return { date: null, days: 30, busy: false };
+    },
+    async mounted() {
+      try {
+        this.date = (await Bank.api('GET', '/api/bank-day')).date;
+      } catch (e) {
+        this.$emit('failed', e);
+      }
+    },
+    methods: {
+      async close(days) {
+        this.busy = true;
+        try {
+          const result = await Bank.api('POST', '/api/bank-day/close?days=' + days);
+          this.date = result.bankDate;
+          this.$emit('changed', result);
+        } catch (e) {
+          this.$emit('failed', e);
+        } finally {
+          this.busy = false;
+        }
+      },
+      format: iso => Bank.date(iso),
+    },
+    template: `
+      <div class="bankday">
+        <span class="label">Банковский день</span>
+        <b id="bank-date">{{ format(date) }}</b>
+        <button id="btn-close-day" class="primary" :disabled="busy" @click="close(1)">Закрыть день</button>
+        <input id="days" type="text" v-model.number="days" maxlength="4">
+        <button id="btn-close-days" :disabled="busy || !(days > 0)" @click="close(days)">Закрыть дней</button>
+      </div>`,
+  },
+
   /* Шапка с переходами между web-клиентами микросервисов. */
   navComponent: {
     props: ['active'],
