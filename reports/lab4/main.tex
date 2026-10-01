@@ -1,0 +1,613 @@
+\documentclass[14pt,a4paper]{extarticle}
+\input{../../preamble}
+
+\begin{document}
+
+\makelabtitle{4}{Эмулятор банкомата}
+
+\tableofcontents
+
+\section{Цель работы}
+
+Разработать эмулятор банкомата, взаимодействующий с виртуальным банком из предыдущих
+работ: реализовать клиентский интерфейс, повторяющий работу с реальным устройством, и
+протокол общения банкомата с банком на основе транзакций. Рабочим счётом карты служит
+кредитный счёт, открытый в третьей лабораторной работе.
+
+\section{Задание}
+
+Банкомат --- автоматизированное устройство, которое позволяет держателю счёта удалённо
+выполнять операции:
+\begin{itemize}
+\item аутентификация по номеру карты и PIN-коду; после трёх неверных PIN-кодов подряд
+работа с банкоматом принудительно завершается;
+\item снятие денег с кредитного счёта;
+\item просмотр остатка кредитного счёта;
+\item просмотр остатка депозитного счёта (необязательная операция);
+\item платёж за услуги оператора мобильной связи (необязательная операция);
+\item возврат карты.
+\end{itemize}
+
+Модель общения с банком построена на транзакциях. В ходе диалога с пользователем банкомат
+накапливает вводимую информацию во \textit{внутреннем списке}: номер карты, PIN-код, вид
+операции, её параметры. Когда собраны все данные, необходимые для операции, содержимое
+списка целиком отправляется серверу банка, а список очищается. Для следующей операции
+данные карты вводятся заново; номер карты эмулятор запоминает, поскольку он имитирует саму
+карту, оставшуюся в устройстве.
+
+Операции со счётом сопровождаются чеком: при платеже чек печатается автоматически, в
+остальных случаях --- по желанию клиента. Номер карты и PIN-код вводятся с клавиатуры; сумма
+снятия должна быть неотрицательным целым числом; номер телефона при платеже состоит из
+десяти цифр и перед отправкой подтверждается клиентом. В работе реализованы все операции,
+включая необязательные.
+
+\section{Проектирование}
+
+\subsection{Архитектура}
+
+Задание выделяет в программе две системы --- клиентский интерфейс и протокол общения
+банка и банкомата. Им соответствуют два уровня решения (рисунок~\ref{fig:arch}).
+
+Банкомат реализован отдельным микросервисом \texttt{atm-service}. Он не имеет базы данных
+и ничего не знает о счетах и договорах: его задача --- вести диалог с клиентом и собирать
+транзакцию. Web-интерфейс выполнен как <<тонкий>> терминал: браузер только рисует экран,
+который описал сервис, и сообщает о нажатиях. Вся логика сеанса находится на сервере, где её
+можно тестировать без браузера.
+
+Банковскую сторону протокола реализует сервис кредитов --- владелец карты и кредитного
+счёта. Он проверяет карту и PIN-код, проводит операции через главную книгу, а остатки
+вкладов запрашивает у сервиса депозитов. Банкомату доступна единственная точка входа банка,
+и получить доступ к счёту в обход проверки PIN-кода он не может.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[lbl/.style={font=\scriptsize, text=black!80}]
+\node[box, fill=codeback, minimum width=2.4cm, minimum height=1.2cm] (ui) at (0, 0) {Интерфейс\\[-1pt]банкомата\\[-3pt]{\footnotesize Vue 3}};
+\node[svc, fill=codekw!18, minimum width=3.0cm] (atm) at (4.4, 0) {atm-service\\[-1pt]{\footnotesize автомат сеанса,}\\[-3pt]{\footnotesize внутренний список}};
+\node[svc, minimum width=3.0cm] (crd) at (9.2, 0) {credit-service\\[-1pt]{\footnotesize карты, PIN-коды,}\\[-3pt]{\footnotesize процессинг}};
+\node[svc, minimum width=2.9cm] (acc) at (13.5, 1.3) {account-service\\[-1pt]{\footnotesize проводки, остатки}};
+\node[svc, minimum width=2.9cm] (dep) at (13.5, -1.3) {deposit-service\\[-1pt]{\footnotesize вклады клиента}};
+\draw[flow, <->] (ui) -- node[above, lbl] {экран} node[below, lbl] {события} (atm);
+\draw[flow, <->] (atm) -- node[above, lbl] {транзакция} node[below, lbl] {ответ} (crd);
+\draw[flow] (crd.east) -- ++(0.4, 0) |- (acc.west);
+\draw[flow] (crd.east) -- ++(0.4, 0) |- (dep.west);
+\draw[black!45, dashed] (6.8, 2.1) -- (6.8, -2.1);
+\node[note] at (2.6, 2.0) {банкомат};
+\node[note] at (10.6, 2.0) {банк};
+\end{tikzpicture}
+\caption{Банкомат и банк: уровни решения}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Протокол общения банка и банкомата}
+
+Транзакция --- упорядоченный список пар <<имя --- значение>>, то есть содержимое
+внутреннего списка банкомата. Она передаётся одним запросом
+\texttt{POST /api/atm/transactions}; элементы списка перечислены в
+таблице~\ref{tab:items}. Банк отвечает статусом \texttt{OK} или \texttt{ERROR}, кодом, текстом
+для экрана и данными для чека (таблица~\ref{tab:codes}). Пример обмена приведён в
+листинге~\ref{lst:exchange}.
+
+\begin{table}[H]
+\caption{Элементы транзакции}
+\label{tab:items}
+\centering
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Имя & Значение & Когда добавляется в список \\
+\midrule
+\texttt{CARD} & номер карты, 16 цифр & после ввода номера; перед новой операцией --- автоматически \\
+\texttt{PIN} & PIN-код, 4 цифры & после ввода PIN-кода \\
+\texttt{OPERATION} & \texttt{AUTHORIZE}, \texttt{WITHDRAW}, \texttt{BALANCE}, \texttt{DEPOSIT\_BALANCE}, \texttt{PAYMENT} & при выборе пункта меню \\
+\texttt{AMOUNT} & сумма & после ввода суммы снятия или платежа \\
+\texttt{OPERATOR} & код оператора связи & после выбора оператора \\
+\texttt{PHONE} & номер телефона, 10 цифр & после ввода номера \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\caption{Коды ответа банка}
+\label{tab:codes}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+Код & Значение \\
+\midrule
+\texttt{OK} & операция выполнена; в данных --- сумма, остаток, реквизиты для чека \\
+\texttt{WRONG\_PIN} & неверный PIN-код; в данных --- число оставшихся попыток \\
+\texttt{CARD\_BLOCKED} & карта заблокирована после трёх неверных PIN-кодов подряд \\
+\texttt{CARD\_NOT\_FOUND} & карта не обслуживается банком \\
+\texttt{INSUFFICIENT\_FUNDS} & на счёте недостаточно средств \\
+\texttt{INVALID\_AMOUNT}, \texttt{INVALID\_PHONE} & неверная сумма или номер телефона \\
+\texttt{UNKNOWN\_OPERATOR}, \texttt{UNKNOWN\_OPERATION} & оператора связи или операции нет в справочнике \\
+\texttt{SERVICE\_UNAVAILABLE} & смежный сервис банка временно недоступен \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}[style=json, caption={Транзакция снятия наличных и ответ банка}, label={lst:exchange}]
+POST /api/atm/transactions
+{"items": [
+  {"name": "CARD",      "value": "9112380000000036"},
+  {"name": "PIN",       "value": "****"},
+  {"name": "OPERATION", "value": "WITHDRAW"},
+  {"name": "AMOUNT",    "value": "450"}
+]}
+
+200 OK
+{"status": "OK", "code": "OK", "message": "Заберите деньги",
+ "data": {"amount": 450, "balance": 2550.00, "currency": "BYN",
+          "bankDate": "2026-11-01", "holder": "Лебедевич Артем Владимирович"}}
+\end{lstlisting}
+
+Банк не хранит состояние диалога: каждая транзакция содержит номер карты и PIN-код и
+проверяется заново. Поэтому банковская сторона остаётся сервисом без состояния и может
+масштабироваться горизонтально, а состояние сеанса живёт только в банкомате.
+
+\subsection{Конечный автомат сеанса}
+
+Работа с банкоматом описана конечным автоматом из одиннадцати состояний
+(рисунок~\ref{fig:fsm}). События автомата --- ввод значения с клавиатуры (клавиша <<Ввод>>),
+выбор пункта меню боковой кнопкой и клавиша <<Отмена>>.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  st/.style={draw=black!70, rounded corners=4pt, fill=codekw!6, minimum width=3.0cm, minimum height=0.95cm,
+             align=center, font=\footnotesize, inner sep=3pt},
+  lbl/.style={font=\scriptsize, text=black!85, align=center}]
+\node[st] (ic) at (0, 0) {\texttt{INSERT\_CARD}\\ожидание карты};
+\node[st] (pin) at (5.7, 0) {\texttt{PIN}\\ввод PIN-кода};
+\node[st] (menu) at (11.4, 0) {\texttt{MENU}\\главное меню};
+\node[st] (result) at (0, -2.7) {\texttt{RESULT}\\состояние счёта};
+\node[st] (receipt) at (5.7, -2.7) {\texttt{RECEIPT\_PROMPT}\\печатать чек?};
+\node[st] (amount) at (11.4, -2.7) {\texttt{AMOUNT}\\сумма снятия};
+\node[st] (message) at (0, -5.4) {\texttt{MESSAGE}\\итог операции};
+\node[st] (confirm) at (5.7, -5.4) {\texttt{CONFIRM}\\подтверждение};
+\node[st] (operator) at (11.4, -5.4) {\texttt{OPERATOR}\\выбор оператора};
+\node[st] (payamount) at (5.7, -8.1) {\texttt{PAY\_AMOUNT}\\сумма платежа};
+\node[st] (phone) at (11.4, -8.1) {\texttt{PHONE}\\номер телефона};
+
+\draw[flow] ([yshift=2mm]ic.east) -- node[above, lbl] {номер карты} ([yshift=2mm]pin.west);
+\draw[flow] ([yshift=-2mm]pin.west) -- node[below, lbl] {3 ошибки} ([yshift=-2mm]ic.east);
+\draw[flow] ([yshift=2mm]pin.east) -- node[above, lbl] {PIN-код принят} ([yshift=2mm]menu.west);
+\draw[flow] ([yshift=-2mm]menu.west) -- node[below, lbl] {новая операция} ([yshift=-2mm]pin.east);
+\draw[flow] (pin) edge[loop below, looseness=6] node[lbl, below] {неверный PIN-код} (pin);
+\draw[flow] (menu) -- node[right, lbl] {снять\\наличные} (amount);
+\draw[flow] (amount) -- node[above, lbl] {деньги выданы} (receipt);
+\draw[flow, <->] (menu.south west) -- node[lbl, sloped, above] {остаток счёта} node[lbl, sloped, below] {после снятия} (receipt.north east);
+\draw[flow] (receipt) -- node[above, lbl] {после остатка} (result);
+\draw[flow] (result) -- node[right, lbl] {забрать\\карту} (ic);
+\draw[flow] (menu.east) -- ++(0.75, 0) |- (operator.east);
+\node[lbl, anchor=east] at ([xshift=6mm, yshift=-13.5mm]amount.east) {оплата связи};
+\draw[flow] (operator) -- node[right, lbl] {оператор} (phone);
+\draw[flow] (phone) -- node[above, lbl] {номер} (payamount);
+\draw[flow] (payamount) -- node[right, lbl] {сумма} (confirm);
+\draw[flow] (confirm) -- node[above, lbl] {ввести заново} (operator);
+\draw[flow] (confirm) -- node[above, lbl] {подтвердить} (message);
+\draw[flow] (message.west) -- ++(-0.75, 0) |- ([xshift=6mm, yshift=13mm]menu.north) -- ([xshift=6mm]menu.north);
+\draw[black!75, line width=0.5pt] (result.west) -- ++(-0.75, 0);
+\node[lbl] at (5.7, 2.0) {продолжить работу};
+\draw[flow] ([xshift=-6mm]menu.north) -- ++(0, 0.55) -| (ic.north);
+\node[lbl] at (5.7, 1.25) {забрать карту};
+\end{tikzpicture}
+\caption{Конечный автомат сеанса работы с банкоматом (основные переходы)}
+\label{fig:fsm}
+\end{figure}
+
+На рисунке не показаны переходы по отказу банка: из состояний \texttt{AMOUNT} и
+\texttt{CONFIRM}, а также при запросе остатка отказ (например, нехватка средств) ведёт в
+состояние \texttt{MESSAGE}, откуда клиент возвращается в меню. Клавиша <<Отмена>> внутри
+операции возвращает в меню, а в меню и при вводе PIN-кода --- возвращает карту.
+
+\subsection{Внутренний список}
+
+Жизненный цикл внутреннего списка на примере двух операций подряд показан в
+таблице~\ref{tab:buffer}. После авторизации номер карты и PIN-код остаются в списке и
+используются первой операцией. Отправка транзакции очищает список, поэтому перед второй
+операцией банкомат сам добавляет номер карты, запрашивает PIN-код и повторно авторизует
+карту --- неверный PIN-код обнаруживается сразу, а не после ввода суммы.
+
+\begin{table}[H]
+\caption{Внутренний список при снятии наличных и последующем запросе остатка}
+\label{tab:buffer}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+Действие клиента & Содержимое списка & Обращение к банку \\
+\midrule
+Ввод номера карты & \texttt{CARD} & --- \\
+Ввод PIN-кода & \texttt{CARD, PIN} & \texttt{AUTHORIZE} \\
+Выбор <<Снять наличные>> & \texttt{CARD, PIN, OPERATION} & --- \\
+Ввод суммы & \texttt{CARD, PIN, OPERATION, AMOUNT} & \texttt{WITHDRAW} \\
+Ответ банка получен & пуст & --- \\
+Выбор <<Остаток счёта>> & \texttt{CARD} (подставлен банкоматом) & --- \\
+Ввод PIN-кода & \texttt{CARD, PIN} & \texttt{AUTHORIZE} \\
+ & \texttt{CARD, PIN, OPERATION} & \texttt{BALANCE} \\
+Ответ банка получен & пуст & --- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Операции банка}
+
+Снятие наличных в банкомате --- это операции 2 и 3 схемы <<Кредитная программа>>:
+<<Перевод кредита в кассу>> (кредит текущего счёта, дебет кассы) и <<Получение кредита через
+кассу>> (кредит кассы). Перед проводкой сервис кредитов сравнивает сумму с остатком текущего
+счёта; тот же запрет отрицательного остатка действует и в главной книге.
+
+Платёж за услуги связи списывает сумму с текущего счёта клиента и зачисляет её на
+расчётный счёт оператора --- пассивный счёт 3012 <<Текущие (расчётные) счета коммерческих
+организаций>>, который открывается в главной книге при первом платеже этому оператору.
+
+Запрос остатка депозитного счёта сервис кредитов переадресует сервису депозитов и
+возвращает действующие вклады держателя карты.
+
+\subsection{Защита PIN-кода}
+
+PIN-код генерируется при выпуске карты случайным образом и показывается сотруднику
+банка один раз (<<ПИН-конверт>>). В базе хранится только его хеш BCrypt, восстановить
+PIN-код по которому нельзя; при утрате он перевыпускается. Счётчик неверных попыток
+ведёт банк, а не банкомат: после третьей ошибки подряд карта блокируется, и начать подбор
+заново в новом сеансе или на другом банкомате невозможно. Блокировка снимается
+перевыпуском PIN-кода. На экране, во внутреннем списке и в журнале обмена PIN-код
+отображается звёздочками.
+
+Номер карты содержит контрольную цифру по алгоритму Луна. Банкомат проверяет её сам и
+не обращается в банк, если номер набран с ошибкой.
+
+\section{Реализация}
+
+\subsection{Структура}
+
+Состав модуля банкомата и банковской части протокола приведён в листинге~\ref{lst:tree}.
+
+\listingcaption{Модуль \texttt{atm-service} и пакет протокола в \texttt{credit-service}}{lst:tree}
+\begin{Verbatim}[fontsize=\footnotesize, frame=single, rulecolor=\color{codeframe}]
+atm-service/
+  bank/        BankGateway — REST-клиент банка; Transaction, Item, BankReply
+  session/     AtmSession  — конечный автомат сеанса и внутренний список
+               AtmState, Screen, Receipts, AtmService (реестр сеансов)
+  web/         AtmController — REST клиентского интерфейса
+  resources/   static/index.html, app.js, atm.css — интерфейс банкомата
+credit-service/
+  atm/         AtmProcessor — обработка транзакций; AtmRequest, AtmResponse, DepositApi
+  domain/      Card, CardNumbers, MobileOperator, MobilePayment
+  service/     CardService — выпуск карты, проверка и перевыпуск PIN-кода
+  web/         AtmController — POST /api/atm/transactions
+\end{Verbatim}
+
+\subsection{Автомат сеанса и внутренний список}
+
+Сеанс представлен объектом \texttt{AtmSession}. Событие <<Ввод>> обрабатывается в
+зависимости от текущего состояния (листинг~\ref{lst:enter}): значение проверяется, добавляется
+во внутренний список \texttt{buffer}, и автомат переходит в следующее состояние либо
+обращается к банку.
+
+\begin{lstlisting}[style=java, caption={Обработка ввода с клавиатуры (\texttt{AtmSession.enter})}, label={lst:enter}]
+public synchronized Screen enter(String text) {
+    begin();
+    String value = text == null ? "" : text.replace(" ", "");
+    switch (state) {
+        case INSERT_CARD -> insertCard(value);
+        case PIN -> {
+            if (!value.matches("\\d{4}")) {
+                notice = "PIN-код состоит из 4 цифр";
+            } else {
+                buffer.add(new Item(Item.PIN, value));
+                authorize();
+            }
+        }
+        case AMOUNT -> {
+            if (acceptAmount(value)) {
+                execute();
+            }
+        }
+        case PHONE -> {
+            if (!value.matches("\\d{10}")) {
+                notice = "Номер телефона — 10 цифр, например 0291234567";
+            } else {
+                buffer.add(new Item(Item.PHONE, value));
+                state = AtmState.PAY_AMOUNT;
+            }
+        }
+        case PAY_AMOUNT -> {
+            if (acceptAmount(value)) {
+                state = AtmState.CONFIRM;
+            }
+        }
+        default -> { }
+    }
+    return screen();
+}
+\end{lstlisting}
+
+Отправка транзакции и очистка списка сосредоточены в одном методе
+(листинг~\ref{lst:execute}). По ответу банка автомат выбирает следующее состояние: при
+платеже чек печатается сразу, при снятии и запросе остатка клиенту задаётся вопрос о чеке,
+при отказе показывается сообщение банка.
+
+\begin{lstlisting}[style=java, caption={Отправка транзакции банку (\texttt{AtmSession.execute})}, label={lst:execute}]
+/** Отправка накопленной транзакции: содержимое списка уходит банку целиком, список очищается. */
+private void execute() {
+    reply = send(new ArrayList<>(buffer));
+    buffer.clear();
+    if (reply == null) {
+        state = AtmState.MESSAGE;
+        notice = "Нет связи с банком. Операция не выполнена";
+    } else if (!reply.ok()) {
+        if ("WRONG_PIN".equals(reply.code()) || "CARD_BLOCKED".equals(reply.code())) {
+            eject(reply.message() + ". Заберите карту");
+        } else {
+            state = AtmState.MESSAGE;
+            notice = reply.message();
+        }
+    } else if ("PAYMENT".equals(operation)) {
+        receipt = Receipts.print(operation, reply, card, terminalId, clock);     // чек платежа печатается всегда
+        state = AtmState.MESSAGE;
+    } else {
+        if ("WITHDRAW".equals(operation)) {
+            cash = Receipts.money(reply, "amount");
+        }
+        state = AtmState.RECEIPT_PROMPT;
+    }
+}
+\end{lstlisting}
+
+Правило <<данные карты вводятся заново>> реализовано при выборе операции
+(листинг~\ref{lst:choose}): если в списке нет номера карты и PIN-кода, банкомат подставляет
+запомненный номер и переходит к вводу PIN-кода, запомнив выбранную операцию.
+
+\begin{lstlisting}[style=java, caption={Повторный ввод данных карты (\texttt{AtmSession.chooseOperation})}, label={lst:choose}]
+private void chooseOperation(String option) {
+    if (hasCredentials()) {
+        startOperation(option);
+    } else {
+        buffer.clear();
+        buffer.add(new Item(Item.CARD, card));
+        pendingOperation = option;
+        state = AtmState.PIN;
+    }
+}
+\end{lstlisting}
+
+\subsection{Банковская сторона протокола}
+
+Транзакцию принимает класс \texttt{AtmProcessor} сервиса кредитов
+(листинг~\ref{lst:processor}). Проверка карты и PIN-кода выполняется для каждой транзакции
+до разбора операции. Отказы возвращаются не исключениями, а обычным ответом протокола: это
+важно для счётчика неверных попыток --- он изменяется в той же транзакции базы данных и
+должен быть сохранён.
+
+\begin{lstlisting}[style=java, caption={Проверка карты и PIN-кода, выбор операции (\texttt{AtmProcessor.handle})}, label={lst:processor}]
+Card card = cards.findByNumber(tx.get("CARD")).orElse(null);
+if (card == null) {
+    return AtmResponse.error("CARD_NOT_FOUND", "Карта не обслуживается банком");
+}
+if (card.isBlocked()) {
+    return AtmResponse.error("CARD_BLOCKED", "Карта заблокирована. Обратитесь в банк");
+}
+if (!cardService.matches(card, tx.get("PIN"))) {
+    int left = card.registerFailedAttempt();
+    return left == 0
+            ? AtmResponse.error("CARD_BLOCKED", "PIN-код трижды введён неверно. Карта заблокирована")
+            : AtmResponse.error("WRONG_PIN", "Неверный PIN-код. Осталось попыток: " + left, Map.of("attemptsLeft", left));
+}
+card.setFailedAttempts(0);
+
+try {
+    return switch (operation) {
+        case "AUTHORIZE" -> AtmResponse.ok("Авторизация выполнена", Map.of("holder", card.getHolder()));
+        case "BALANCE" -> balance(card);
+        case "DEPOSIT_BALANCE" -> depositBalance(card);
+        case "WITHDRAW" -> withdraw(card, tx.get("AMOUNT"));
+        case "PAYMENT" -> payment(card, tx.get("OPERATOR"), tx.get("PHONE"), tx.get("AMOUNT"));
+        default -> AtmResponse.error("UNKNOWN_OPERATION", "Операция не поддерживается");
+    };
+} catch (BankException e) {
+    return AtmResponse.error(e.getCode(), e.getMessage());
+} ...
+\end{lstlisting}
+
+Банк не доверяет проверкам банкомата и повторяет их: сумма снятия должна быть целым
+положительным числом, номер телефона --- десятью цифрами с кодом оператора 25, 29, 33 или 44,
+оператор --- записью справочника.
+
+\subsection{Клиентский интерфейс}
+
+Интерфейс повторяет лицевую панель банкомата: экран, по четыре боковые кнопки с каждой
+стороны, цифровая клавиатура с клавишами <<Отмена>>, <<Сброс>> и <<Ввод>>, приёмник карты,
+лотки выдачи денег и чека. Сервис возвращает описание экрана --- заголовок, строки текста,
+вид ожидаемого ввода, пункты меню, выданные деньги, строки чека; интерфейс отображает его
+и отправляет одно из трёх событий (таблица~\ref{tab:rest}). Пункты меню привязаны к боковым
+кнопкам. Пока идёт обращение к банку, на экране показывается надпись <<Авторизация на
+сервере...>>. Цифры можно набирать и с клавиатуры компьютера.
+
+Справа от банкомата для наглядности выводятся текущее состояние автомата, содержимое
+внутреннего списка и последняя транзакция с ответом банка.
+
+\begin{table}[H]
+\caption{REST клиентского интерфейса банкомата}
+\label{tab:rest}
+\centering
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Метод & Адрес & Назначение \\
+\midrule
+POST & \texttt{/api/sessions} & начало сеанса; в ответе --- идентификатор и первый экран \\
+GET & \texttt{/api/sessions/\{id\}} & текущий экран \\
+POST & \texttt{/api/sessions/\{id\}/enter} & клавиша <<Ввод>> с набранным значением \\
+POST & \texttt{/api/sessions/\{id\}/select} & боковая кнопка: выбран пункт меню \\
+POST & \texttt{/api/sessions/\{id\}/cancel} & клавиша <<Отмена>> \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Тестирование}
+
+Банкомат и банковская сторона протокола покрыты 68 тестами
+(таблица~\ref{tab:tests}). Автомат сеанса тестируется как обычный объект с заглушкой банка:
+тесты подают события и проверяют экран, содержимое внутреннего списка и транзакцию,
+отправленную банку (листинг~\ref{lst:test}). Функциональные тесты проходят сценарии в
+браузере через WebDriver. Итог прогона приведён в листинге~\ref{lst:run}.
+
+\begin{table}[H]
+\caption{Тесты эмулятора банкомата и протокола}
+\label{tab:tests}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lcX}
+\toprule
+Класс тестов & Тестов & Что проверяется \\
+\midrule
+\multicolumn{3}{l}{\textit{atm-service}} \\
+\texttt{AtmSessionTest} & 27 & переходы автомата, внутренний список, чеки, отказы \\
+\texttt{AtmApiIT} & 3 & REST интерфейса, независимость сеансов \\
+\texttt{AtmUiIT} & 3 & снятие с чеком, три неверных PIN-кода, платёж --- в браузере \\
+\midrule
+\multicolumn{3}{l}{\textit{credit-service}} \\
+\texttt{AtmProtocolIT} & 25 & все операции протокола, блокировка карты, проводки \\
+\texttt{CardNumbersTest} & 10 & алгоритм Луна, счётчик попыток \\
+\midrule
+Всего & 68 & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}[style=java, caption={Тест правила повторного ввода PIN-кода (\texttt{AtmSessionTest})}, label={lst:test}]
+@Test
+@DisplayName("Перед следующей операцией PIN-код вводится заново, номер карты банкомат помнит сам")
+void secondOperationRequiresPinAgain() {
+    login(atm);
+    atm.select("WITHDRAW");
+    atm.enter("100");
+    atm.select("NO");
+
+    Screen pin = atm.select("BALANCE");
+    assertThat(pin.state()).isEqualTo("PIN");
+    assertThat(pin.title()).isEqualTo("Введите PIN-код ещё раз");
+    assertThat(pin.buffer()).containsExactly(new Item("CARD", CARD));
+
+    Screen prompt = atm.enter(PIN);
+    assertThat(prompt.state()).isEqualTo("RECEIPT_PROMPT");
+    assertThat(sent().items()).containsExactly(new Item("CARD", CARD), new Item("PIN", PIN), new Item("OPERATION", "BALANCE"));
+}
+\end{lstlisting}
+
+\listingcaption{Результат выполнения тестов}{lst:run}
+\VerbatimInput[fontsize=\fontsize{7}{8.8}\selectfont, frame=single, rulecolor=\color{codeframe}, samepage=true]{listings/tests.txt}
+
+\section{Результаты работы}
+
+Для демонстрации клиенту выдан кредит 3\,000 BYN с картой. Все пять сервисов запущены,
+банкомат открыт по адресу \texttt{http://localhost:8085}.
+
+Сеанс начинается с ввода номера карты (рисунок~\ref{fig:insert}); номер отображается
+группами по четыре цифры. После неверного PIN-кода банкомат сообщает число оставшихся
+попыток и запрашивает его повторно (рисунок~\ref{fig:wrong}); в панели справа виден ответ
+банка с кодом \texttt{WRONG\_PIN}.
+
+\screenshot{img/insert_card.png}{Ввод номера карты}{fig:insert}
+
+\screenshot{img/wrong_pin.png}{Неверный PIN-код: повторный запрос}{fig:wrong}
+
+После верного PIN-кода открывается главное меню (рисунок~\ref{fig:menu}). Во внутреннем
+списке остаются номер карты и скрытый PIN-код, в журнале обмена --- транзакция авторизации.
+
+\screenshot{img/menu.png}{Главное меню}{fig:menu}
+
+Снятие наличных показано на рисунках~\ref{fig:amount}--\ref{fig:receipt}: клиент вводит
+сумму, банк подтверждает операцию, деньги появляются в лотке выдачи, и по желанию клиента
+печатается чек с суммой и остатком счёта. После отправки транзакции внутренний список пуст.
+
+\screenshot{img/withdraw_amount.png}{Ввод суммы снятия}{fig:amount}
+
+\screenshot{img/withdraw_cash.png}{Деньги выданы, вопрос о печати чека}{fig:cash}
+
+\screenshot{img/withdraw_receipt.png}{Чек о выдаче наличных}{fig:receipt}
+
+Перед следующей операцией банкомат запрашивает PIN-код ещё раз: номер карты уже
+подставлен в список (рисунок~\ref{fig:pin-again}). Остаток кредитного счёта выводится на
+экран и в чек; на этом шаге клиент может продолжить работу или забрать карту
+(рисунок~\ref{fig:balance}).
+
+\screenshot{img/pin_again.png}{Повторный ввод PIN-кода перед новой операцией}{fig:pin-again}
+
+\screenshot{img/balance.png}{Остаток кредитного счёта}{fig:balance}
+
+Оплата мобильной связи: выбор оператора, ввод номера и суммы, экран подтверждения
+(рисунок~\ref{fig:confirm}) и автоматически напечатанный чек (рисунок~\ref{fig:payment}).
+
+\screenshot{img/payment_confirm.png}{Подтверждение данных платежа}{fig:confirm}
+
+\screenshot{img/payment_receipt.png}{Платёж принят, чек напечатан автоматически}{fig:payment}
+
+При попытке снять больше, чем доступно на счёте, банк отклоняет транзакцию с кодом
+\texttt{INSUFFICIENT\_FUNDS}, и банкомат показывает его сообщение
+(рисунок~\ref{fig:insufficient}). Остаток депозитного счёта держателя карты приведён на
+рисунке~\ref{fig:deposit}: данные получены сервисом кредитов от сервиса депозитов.
+
+\screenshot{img/insufficient.png}{Отказ банка: недостаточно средств}{fig:insufficient}
+
+\screenshot{img/deposit_balance.png}{Остаток депозитного счёта}{fig:deposit}
+
+После трёх неверных PIN-кодов подряд работа принудительно завершается, а банк блокирует
+карту (рисунок~\ref{fig:blocked}).
+
+\screenshot{img/blocked.png}{Три неверных PIN-кода: карта заблокирована}{fig:blocked}
+
+Результат операций со стороны банка показан на рисунке~\ref{fig:bank}: в карточке
+кредитного договора карта отмечена заблокированной, доступный остаток уменьшился, в
+проводках видны снятие через кассу и оплата услуг связи. В отчёте главной книги
+(рисунок~\ref{fig:report}) появился расчётный счёт оператора 3012 с суммой платежа.
+
+\screenshot[0.95\textwidth]{img/bank_side.png}{Карточка кредитного договора после операций в банкомате}{fig:bank}
+
+\screenshot{img/report.png}{Отчёт по счетам: расчётный счёт оператора связи}{fig:report}
+
+\sectioncenter{Заключение}
+
+Разработан эмулятор банкомата, работающий с виртуальным банком из предыдущих работ.
+Банкомат выполнен отдельным микросервисом: сеанс работы описан конечным автоматом, вводимые
+данные накапливаются во внутреннем списке, который целиком отправляется банку при
+совершении операции и после этого очищается. Реализованы все операции задания, включая
+необязательные: авторизация с ограничением в три попытки, снятие наличных, просмотр остатков
+кредитного и депозитного счетов, оплата мобильной связи с подтверждением данных, печать
+чеков и возврат карты.
+
+Банковская сторона протокола --- единственная точка входа в сервисе кредитов, которая
+при каждой транзакции заново проверяет карту и PIN-код и проводит операции через главную
+книгу. Разделение ответственности получилось таким же, как в реальных системах: устройство
+ведёт диалог и не имеет доступа к счетам, а банк не хранит состояние диалога и принимает
+решения по каждой транзакции независимо. PIN-код хранится только в виде хеша, счётчик
+неверных попыток ведётся на стороне банка.
+
+Решение проверено 68 автоматическими тестами: модульными тестами автомата,
+интеграционными тестами протокола и функциональными тестами интерфейса через WebDriver.
+
+\sectioncenter{Список использованных источников}
+
+\begin{enumerate}
+\item Хопкрофт, Дж. Введение в теорию автоматов, языков и вычислений~/ Дж.~Хопкрофт,
+Р.~Мотвани, Дж.~Ульман. --- 2-е изд. --- М.: Вильямс, 2008. --- 528~с.
+\item Ньюмен, С. Создание микросервисов~/ С.~Ньюмен. --- 2-е изд. --- СПб.: Питер, 2023. ---
+624~с.
+\item ISO/IEC 7812-1:2017. Identification cards --- Identification of issuers --- Part 1:
+Numbering system. --- Geneva: ISO, 2017. --- 9~p.
+\item Provos, N. A Future-Adaptable Password Scheme~/ N.~Provos, D.~Mazi\`eres~// Proceedings
+of the USENIX Annual Technical Conference. --- 1999. --- P.~81--91.
+\item Spring Framework Reference: REST Clients, HTTP Interface [Электронный ресурс]. ---
+Режим доступа: \url{https://docs.spring.io/spring-framework/reference/integration/rest-clients.html}.
+--- Дата доступа: 01.10.2026.
+\end{enumerate}
+
+\appendixtitle{А}{Исходный код эмулятора банкомата и протокола}
+
+\input{appendix}
+
+\end{document}

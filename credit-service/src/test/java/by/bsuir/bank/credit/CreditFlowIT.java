@@ -126,7 +126,7 @@ class CreditFlowIT {
 
         assertThat(closeDays(30)).isEmpty();                                   // 31.10 — платежей ещё нет
         List<String> events = closeDays(1);                                    // 01.11 — первый платёж
-        assertThat(events).containsExactly("2026-11-01: К-000001 — платёж №1: проценты 147.08, основной долг 1606.43 BYN");
+        assertThat(events).containsExactly("01.11.2026: К-000001 — платёж №1: проценты 147.08, основной долг 1606.43 BYN");
 
         // процентный счёт: дебет +147,08 (перевод из кассы) и кредит −147,08 (начисление банком)
         assertTurnover(credit.interestAccount(), "147.08", "147.08", "0.00");
@@ -152,7 +152,7 @@ class CreditFlowIT {
 
         List<String> events = closeDays(182);                                  // до 01.04.2027 включительно
 
-        assertThat(events).hasSize(7).last().isEqualTo("2027-04-01: К-000001 — кредит погашен, договор закрыт");
+        assertThat(events).hasSize(7).last().isEqualTo("01.04.2027: К-000001 — кредит погашен, договор закрыт");
         CreditView closed = credits.details(credit.id()).contract();
         assertThat(closed.status()).isEqualTo("CLOSED");
         assertThat(closed.debt()).isEqualByComparingTo("0");

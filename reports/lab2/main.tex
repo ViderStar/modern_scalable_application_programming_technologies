@@ -1,0 +1,649 @@
+\documentclass[14pt,a4paper]{extarticle}
+\input{../../preamble}
+
+\begin{document}
+
+\makelabtitle{2}{Депозитные операции с физическими лицами}
+
+\tableofcontents
+
+\section{Цель работы}
+
+Реализовать микросервис депозитных операций с физическими лицами: справочник <<План
+счетов>>, форму заключения депозитного договора с контролем вводимых данных, открытие
+счетов клиента по правилам банковского учёта, проводки по схеме <<Депозитная программа>>,
+счёт фонда развития банка и процедуру <<Закрытие банковского дня>> с отчётом о состоянии
+счетов. Данные о клиенте берутся из модуля <<Клиенты>> первой лабораторной работы.
+
+\section{Задание}
+
+Вариант №\,4 соответствует банку <<Решение>> в списке банков Республики Беларусь
+(\url{https://select.by/banki}). Для него выбраны две депозитные программы для физических
+лиц (таблица~\ref{tab:products}); условия приближены к действующим предложениям банка.
+
+\begin{table}[H]
+\caption{Депозитные программы банка <<Решение>>}
+\label{tab:products}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+ & <<Свободное накопление>> & <<Online-решение>> \\
+\midrule
+Вид вклада & отзывный, до востребования & срочный безотзывный \\
+Выплата процентов & ежемесячно & в конце срока \\
+Досрочный отзыв & возможен в любой день & невозможен \\
+Ставка, BYN & 7,00\,\% годовых & 12,90\,\% годовых \\
+Ставка, USD & 1,50\,\% годовых & 3,00\,\% годовых \\
+Минимальная сумма & 100 & 500 \\
+Срок договора & 1--12 месяцев & 3--13 месяцев \\
+Счёт основной суммы & 3404 & 3414 \\
+Счёт процентов & 3470 & 3471 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Требования задания:
+\begin{enumerate}
+\item разработать справочник <<План счетов>> и внести в него счета, необходимые для
+обслуживания выбранных депозитных линий;
+\item разработать форму заключения депозитного договора (вид депозита и валюта из
+справочников, номер договора, даты начала и окончания, срок, сумма, процент) с контролем
+корректности данных;
+\item при заключении договора создавать не менее двух счетов --- для основной суммы и
+для процентов --- с 13-значным номером, кодом и активностью из плана счетов, дебетом,
+кредитом, сальдо и названием по ФИО клиента;
+\item предусмотреть счёт фонда развития банка (СФРБ) со стартовым капиталом 1~млн
+белорусских рублей;
+\item разработать процедуру <<Закрытие банковского дня>> и отчёт о состоянии счетов; при
+активных депозитных программах в нём должно быть не менее шести счетов.
+\end{enumerate}
+
+\section{Проектирование}
+
+\subsection{Декомпозиция на микросервисы}
+
+Депозитные операции затрагивают три разных области ответственности, и каждой
+соответствует свой микросервис со своей базой данных (рисунок~\ref{fig:services}):
+\begin{itemize}
+\item \texttt{client-service} --- клиенты банка (лабораторная работа №\,1);
+\item \texttt{account-service} --- главная книга: план счетов, лицевые счета, проводки,
+банковский день;
+\item \texttt{deposit-service} --- депозитные программы и договоры, расчёт процентов.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=10mm and 16mm]
+\node[svc] (dep) at (0, 0) {deposit-service\\[-1pt]{\footnotesize договоры, проценты}\\[-3pt]{\footnotesize порт 8083}};
+\node[svc] (cli) at (-5.9, 0) {client-service\\[-1pt]{\footnotesize клиенты (ЛР1)}\\[-3pt]{\footnotesize порт 8081}};
+\node[svc] (acc) at (5.9, 0) {account-service\\[-1pt]{\footnotesize счета, проводки, день}\\[-3pt]{\footnotesize порт 8082}};
+\node[db, below=7mm of cli] (dbc) {H2 clients};
+\node[db, below=7mm of dep] (dbd) {H2 deposits};
+\node[db, below=7mm of acc] (dba) {H2 accounts};
+\node[box, above=11mm of dep, fill=codeback, minimum width=3.3cm] (ui) {Web-клиент депозитов\\[-1pt]{\footnotesize Vue 3}};
+\draw[flow] (cli) -- (dbc);
+\draw[flow] (dep) -- (dbd);
+\draw[flow] (acc) -- (dba);
+\draw[flow] (ui) -- node[right, note] {REST} (dep);
+\draw[flow] (dep) -- node[above, note] {клиент} (cli);
+\draw[flow] ([yshift=2.5mm]dep.east) -- node[above, note] {счета, проводки} ([yshift=2.5mm]acc.west);
+\draw[flow, dashed] ([yshift=-2.5mm]acc.west) -- node[below, note] {новый день} ([yshift=-2.5mm]dep.east);
+\end{tikzpicture}
+\caption{Микросервисы депозитного контура и REST-вызовы между ними}
+\label{fig:services}
+\end{figure}
+
+Главная книга выделена в отдельный сервис намеренно. Со счетами работают и депозиты, и
+кредиты следующей лабораторной работы, а правила учёта --- расчёт сальдо по активности
+счёта, запрет отрицательного остатка, неделимость проводки --- должны соблюдаться в одном
+месте независимо от того, какой сервис инициировал операцию. Сервис депозитов не хранит ни
+оборотов, ни остатков: он знает только номера счетов своего договора и просит главную книгу
+провести операцию.
+
+Сервисы общаются синхронно по REST. Клиенты смежных сервисов описаны декларативными
+интерфейсами Spring (\texttt{@HttpExchange}) в общей библиотеке \texttt{bank-common}; там же
+находится единый формат ошибки, который позволяет передать сообщение главной книги через
+сервис депозитов до web-клиента без искажений.
+
+\subsection{План счетов и номер счёта}
+
+Справочник <<План счетов>> (таблица~\ref{tab:chart}) хранится в базе сервиса счетов и
+заполняется при старте. Активность балансового счёта определяет правило расчёта сальдо:
+у активного счёта остаток равен дебету минус кредит, у пассивного --- кредиту минус дебет.
+
+\begin{table}[H]
+\caption{Счета плана счетов, используемые депозитными программами}
+\label{tab:chart}
+\centering
+\small
+\begin{tabularx}{\textwidth}{clXl}
+\toprule
+Код & Активность & Наименование & Назначение в работе \\
+\midrule
+1010 & активный & Денежные средства в кассе & касса банка \\
+3404 & пассивный & Вклады (депозиты) до востребования физических лиц & сумма отзывного вклада \\
+3414 & пассивный & Срочные вклады (депозиты) физических лиц & сумма срочного вклада \\
+3470 & пассивный & Начисленные процентные расходы по вкладам до востребования & проценты отзывного вклада \\
+3471 & пассивный & Начисленные процентные расходы по срочным вкладам & проценты срочного вклада \\
+7327 & пассивный & Фонд развития банка & СФРБ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Номер лицевого счёта состоит из 13 цифр:
+\begin{equation}
+\underbrace{b_1 b_2 b_3 b_4}_{\text{балансовый счёт}}\;
+\underbrace{c_1 c_2 c_3 c_4 c_5}_{\text{код клиента}}\;
+\underbrace{n_1 n_2 n_3}_{\text{номер счёта клиента}}\;
+\underbrace{k}_{\text{ключ}}, \qquad
+k = \Bigl(3 \sum_{i=1}^{12} d_i w_i\Bigr) \bmod 10,
+\end{equation}
+где $d_i$~--- первые 12 цифр номера, $w_i$~--- веса, циклически повторяющие
+последовательность $7, 1, 3$. Код клиента равен его идентификатору в модуле <<Клиенты>>, у
+собственных счетов банка он нулевой. Веса 7, 1, 3 и множитель 3 взаимно просты с 10,
+поэтому ошибка в любой одной цифре номера меняет ключ и обнаруживается при проверке.
+
+\subsection{Схема данных}
+
+Базы сервисов независимы (рисунок~\ref{fig:er}). Договор ссылается на клиента и на счета
+не внешними ключами, а идентификатором клиента и номерами счетов: целостность таких ссылок
+обеспечивается проверкой через REST в момент заключения договора.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[note, anchor=west] at (0, 0.45) {\textit{account-service}};
+\node[entity, text width=3.6cm, anchor=north west] (chart) at (0, 0) {\textbf{chart\_of\_accounts}\nodepart{two} code \hfill PK\\ name\\ activity};
+\node[entity, text width=4.3cm, anchor=north west] (account) at (5.0, 0) {\textbf{account}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ chart\_code \hfill FK\\ currency\_code \hfill FK\\ name, contract\_ref\\ owner\_code, owner\_seq \hfill UQ\\ debit, credit, opened\_on};
+\node[entity, text width=3.0cm, anchor=north west] (currency) at (10.7, 0) {\textbf{currency}\nodepart{two} code \hfill PK\\ name};
+\node[entity, text width=3.6cm, anchor=north west] (entry) at (0, -4.3) {\textbf{operation\_entry}\nodepart{two} id \hfill PK\\ operation\_id \hfill FK\\ account\_id \hfill FK\\ side, amount};
+\node[entity, text width=4.3cm, anchor=north west] (operation) at (5.0, -4.3) {\textbf{operation}\nodepart{two} id \hfill PK\\ batch\_key \hfill FK\\ bank\_date\\ description, contract\_ref};
+\node[entity, text width=3.0cm, anchor=north west] (batch) at (10.7, -4.3) {\textbf{posting\_batch}\nodepart{two} batch\_key \hfill PK\\ created\_at};
+\node[entity, text width=3.0cm, anchor=north west] (day) at (10.7, -1.9) {\textbf{bank\_day}\nodepart{two} id \hfill PK\\ bank\_date};
+\draw[flow] (account.west |- chart.east) -- (chart.east);
+\draw[flow] (account.east |- currency.west) -- (currency.west);
+\draw[flow] (entry.east |- operation.west) -- (operation.west);
+\draw[flow] (entry.north) -- ++(0, 0.55) -| ([xshift=-12mm]account.south);
+\draw[flow] (operation.east |- batch.west) -- (batch.west);
+
+\node[note, anchor=west] at (0, -7.35) {\textit{deposit-service}};
+\node[entity, text width=4.4cm, anchor=north west] (product) at (0, -7.8) {\textbf{deposit\_product}\nodepart{two} id \hfill PK\\ name, kind, currency\\ rate, min\_amount\\ min\_term\_months\\ max\_term\_months};
+\node[entity, text width=7.2cm, anchor=north west] (contract) at (6.5, -7.8) {\textbf{deposit\_contract}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ product\_id \hfill FK\\ client\_id, client\_name \hfill $\to$ client-service\\ currency, amount, rate, term\_months\\ start\_date, end\_date, status\\ main\_account, interest\_account \hfill $\to$ account\\ accrued, paid, paid\_months};
+\draw[flow] (contract.west |- product.east) -- (product.east);
+\end{tikzpicture}
+\caption{Схемы данных сервисов счетов и депозитов}
+\label{fig:er}
+\end{figure}
+
+\subsection{Схема проводок}
+
+Проводки депозитной программы выполняются в точности по упрощённой схеме из задания
+(таблица~\ref{tab:postings}). Знак <<$+$>> означает увеличение остатка счёта, <<$-$>> ---
+уменьшение: для активной кассы остаток растёт по дебету, для трёх пассивных счетов --- по
+кредиту. Касса в схеме работает как транзитный счёт: всё, что внесено, в тот же момент
+зачисляется на счёт клиента или выдаётся, поэтому её остаток возвращается к нулю.
+
+\begin{table}[H]
+\caption{Проводки процесса <<Депозитная программа>>}
+\label{tab:postings}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{clcccccccc}
+\toprule
+ & & \multicolumn{2}{c}{Касса (А)} & \multicolumn{2}{c}{СФРБ (П)} & \multicolumn{2}{c}{Счёт вклада (П)} & \multicolumn{2}{c}{Проценты (П)} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+№ & Операция & Дт & Кт & Дт & Кт & Дт & Кт & Дт & Кт \\
+\midrule
+1 & Внесение денег в кассу & $+$ & & & & & & & \\
+2 & Перевод денег с кассы на текущий счёт & & $-$ & & & & $+$ & & \\
+3 & Использование денег банком & & & & $+$ & $-$ & & & \\
+\midrule
+4 & Начисление процентов по депозиту & & & $-$ & & & & & $+$ \\
+5 & Перевод процентов в кассу & $+$ & & & & & & $-$ & \\
+6 & Вывод процентов из кассы & & $-$ & & & & & & \\
+\midrule
+7 & Окончание депозита & & & $-$ & & & $+$ & & \\
+8 & Перевод депозита в кассу & $+$ & & & & $-$ & & & \\
+9 & Вывод денег из кассы & & $-$ & & & & & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Операции 1--3 выполняются при заключении договора, 4~--- при каждом закрытии дня,
+5--6~--- в день выплаты процентов, 7--9~--- по окончании срока или при досрочном отзыве.
+
+\subsection{Расчёт процентов}
+
+Проценты простые, начисляются за фактическое число дней при 365 днях в году. К дате
+$t$ по договору на сумму $S$ со ставкой $r$ процентов годовых, заключённому в день $t_0$,
+накоплено
+\begin{equation}
+I(t) = \operatorname{round}\Bigl(\frac{S \cdot r \cdot (t - t_0)}{100 \cdot 365},\ 2\Bigr),
+\label{eq:interest}
+\end{equation}
+а проводка очередного дня делается на разность $I(t)$ и уже начисленной суммы. Такой
+накопительный расчёт устойчивее суммирования дневных процентов: копейки округления не
+теряются, а пропущенный или повторно обработанный день не искажает итог. Например, вклад
+10\,000 BYN под 7\,\% за 31 день приносит $10000 \cdot 7 \cdot 31 / 36500 = 59{,}45$ BYN.
+
+По отзывному вкладу накопленные проценты выплачиваются, когда истекает очередной полный
+месяц договора; по срочному --- только в день окончания, вместе с возвратом суммы вклада.
+
+\subsection{Закрытие банковского дня}
+
+Банковский день хранится в сервисе счетов, но сам этот сервис не знает правил
+депозитов. Поэтому закрытие дня устроено как оповещение
+(рисунок~\ref{fig:dayclose}): сервис счетов объявляет участникам дату нового дня, каждый
+участник начисляет проценты и проводит выплаты через обычный REST главной книги и
+возвращает протокол сделанного, после чего дата сдвигается.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize]
+\foreach \x/\name in {0/Web-клиент, 5.6/account-service, 11.2/deposit-service} {
+  \node[box, minimum width=2.9cm] at (\x, 0) {\name};
+  \draw[black!50, dashed] (\x, -0.4) -- (\x, -6.6);
+}
+\draw[flow] (0, -1.1) -- node[above] {POST /api/bank-day/close} (5.6, -1.1);
+\draw[flow] (5.6, -2.0) -- node[above] {POST /api/internal/day-close} (11.2, -2.0);
+\draw[flow] (11.2, -3.0) -- node[above] {POST /api/operations} (5.6, -3.0);
+\draw[flow, dashed] (5.6, -3.7) -- node[above] {проводки проведены} (11.2, -3.7);
+\draw[flow, dashed] (11.2, -4.6) -- node[above] {протокол операций дня} (5.6, -4.6);
+\node[note, anchor=west] at (5.75, -5.3) {bank\_date := date};
+\draw[flow, dashed] (5.6, -6.1) -- node[above] {новая дата и протокол} (0, -6.1);
+\end{tikzpicture}
+\caption{Взаимодействие сервисов при закрытии банковского дня}
+\label{fig:dayclose}
+\end{figure}
+
+Распределённая процедура должна переживать сбои, поэтому в неё заложены три свойства.
+\begin{enumerate}
+\item \textbf{Идемпотентность.} Каждый пакет проводок несёт ключ вида
+\texttt{DEP-Д-000001-ACCRUE-2026-10-02}. Главная книга запоминает ключи и на повторный запрос
+возвращает уже проведённые операции, не проводя их второй раз.
+\item \textbf{Дата сдвигается последней.} Если участник ответил ошибкой, день остаётся
+открытым и закрытие можно повторить: уже обработанные договоры повторно не начисляются.
+\item \textbf{Навёрстывание.} Недоступный участник не блокирует закрытие дня. Его расчёт
+накопительный (формула~\ref{eq:interest}), поэтому при следующем закрытии он начислит
+проценты сразу за все пропущенные дни.
+\end{enumerate}
+
+\subsection{REST-интерфейсы}
+
+Операции двух сервисов приведены в таблице~\ref{tab:rest}.
+
+\begin{table}[H]
+\caption{REST-интерфейсы сервисов счетов и депозитов}
+\label{tab:rest}
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Метод & Адрес & Назначение \\
+\midrule
+\multicolumn{3}{l}{\textit{account-service}} \\
+GET & \texttt{/api/chart-of-accounts}, \texttt{/api/currencies} & справочники <<План счетов>> и валют \\
+GET & \texttt{/api/accounts?contractRef=} & счета договора или клиента \\
+GET & \texttt{/api/accounts/system} & счёт кассы или фонда развития в заданной валюте \\
+POST & \texttt{/api/accounts} & открытие лицевого счёта \\
+POST & \texttt{/api/operations} & атомарный пакет проводок с ключом идемпотентности \\
+GET & \texttt{/api/operations} & журнал проводок \\
+GET & \texttt{/api/report} & отчёт о состоянии счетов с итогами оборотов \\
+GET & \texttt{/api/bank-day} & текущий банковский день \\
+POST & \texttt{/api/bank-day/close?days=} & закрытие одного или нескольких дней \\
+\midrule
+\multicolumn{3}{l}{\textit{deposit-service}} \\
+GET & \texttt{/api/products}, \texttt{/api/meta} & виды депозитов, валюты, банковский день, номер договора \\
+GET & \texttt{/api/clients} & список клиентов из модуля <<Клиенты>> \\
+GET & \texttt{/api/deposits}, \texttt{/api/deposits/\{id\}} & договоры; договор со счетами и проводками \\
+POST & \texttt{/api/deposits} & заключение договора \\
+POST & \texttt{/api/deposits/\{id\}/withdraw} & досрочный отзыв вклада \\
+POST & \texttt{/api/internal/day-close} & обработка нового банковского дня \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Реализация}
+
+\subsection{Структура проекта}
+
+К проекту первой работы добавлены три модуля Maven (листинг~\ref{lst:tree}).
+
+\listingcaption{Модули лабораторной работы №\,2}{lst:tree}
+\begin{Verbatim}[fontsize=\footnotesize, frame=single, rulecolor=\color{codeframe}]
+bank-common/                общая библиотека сервисов
+  api/                      ApiError, BankException, обработчик ошибок REST
+  client/, ledger/          REST-клиенты ClientApi и LedgerApi, записи запросов и ответов
+account-service/            главная книга
+  domain/                   Account, ChartAccount, Operation, AccountNumbers, Activity
+  service/                  LedgerService, BankDayService, DayCloseNotifier, LedgerInitializer
+  web/                      LedgerController, BankDayController
+  resources/                schema.sql, data.sql (план счетов), static/ (отчёт по счетам)
+deposit-service/            депозиты
+  domain/                   DepositProduct, DepositContract, DepositKind
+  service/                  DepositService, DepositPostings, InterestCalculator, DayCloseProcessor
+  web/                      DepositController, ReferenceController, DayCloseController
+  resources/                schema.sql, data.sql (программы банка), static/ (форма договора)
+\end{Verbatim}
+
+\subsection{Главная книга}
+
+Операция в главной книге --- это набор строк <<счёт, сторона, сумма>>. Сервис принимает не
+одиночную операцию, а пакет (листинг~\ref{lst:post}): заключение договора состоит из трёх
+операций схемы, и они должны быть проведены все вместе либо не проведены вовсе. Пакет
+выполняется в одной транзакции базы данных. Счета выбираются запросом
+\texttt{select ... for update}, чтобы два параллельных пакета не потеряли обновление
+оборотов. После каждой операции проверяется остаток затронутых счетов: отрицательное сальдо
+означает нехватку средств, и тогда исключение откатывает весь пакет вместе с записью о ключе.
+
+\begin{lstlisting}[style=java, caption={Проведение пакета операций (\texttt{LedgerService.post})}, label={lst:post}]
+@Transactional
+public List<OperationView> post(BatchRequest request) {
+    if (batches.existsById(request.batchKey())) {          // повтор запроса: операции уже проведены
+        return operations.findByBatchKeyOrderById(request.batchKey()).stream().map(OperationView::from).toList();
+    }
+    batches.saveAndFlush(new PostingBatch(request.batchKey()));
+
+    LocalDate date = request.bankDate() != null ? request.bankDate() : bankDay.current();
+    Map<String, Account> locked = new LinkedHashMap<>();
+    List<Operation> posted = new ArrayList<>();
+    for (OperationRequest item : request.operations()) {
+        Operation operation = new Operation();
+        ...
+        Set<Account> touched = new LinkedHashSet<>();
+        for (EntryRequest entry : item.entries()) {
+            Account account = locked.computeIfAbsent(entry.account(), number -> accounts.findByNumberForUpdate(number)
+                    .orElseThrow(() -> BankException.notFound("Счёт " + number + " не найден")));
+            ...
+            account.apply(entry.side(), entry.amount());
+            operation.addEntry(account, entry.side(), entry.amount());
+            touched.add(account);
+        }
+        touched.forEach(account -> checkNotOverdrawn(account, item.description()));
+        posted.add(operations.save(operation));
+    }
+    operations.flush();
+    return posted.stream().map(OperationView::from).toList();
+}
+\end{lstlisting}
+
+При старте сервис открывает в каждой валюте кассу и фонд развития банка и зачисляет в
+фонд стартовый капитал. Размер капитала задаётся параметром \texttt{bank.fund.capital}; для
+этой работы сервис запускается со значением 1\,000\,000 BYN.
+
+\subsection{Заключение депозитного договора}
+
+Сервис депозитов проверяет условия договора, запрашивает клиента у модуля <<Клиенты>>,
+открывает в главной книге два счёта и проводит операции 1--3 схемы
+(листинг~\ref{lst:open}). Балансовые счета берутся из вида вклада: 3404 и 3470 для вклада
+до востребования, 3414 и 3471 для срочного. Названием счёта служит ФИО клиента.
+
+\begin{lstlisting}[style=java, caption={Открытие счетов и проводки приёма вклада (\texttt{DepositService.open})}, label={lst:open}]
+ClientInfo client = findClient(request.clientId());
+
+DepositKind kind = product.getKind();
+String number = request.number();
+String currency = product.getCurrency();
+String main = ledger.open(new OpenAccount(kind.getMainChartCode(), currency,
+        client.id().intValue(), client.fullName(), number)).number();
+String interest = ledger.open(new OpenAccount(kind.getInterestChartCode(), currency,
+        client.id().intValue(), client.fullName(), number)).number();
+post(key(number, "OPEN"), number, today,
+        DepositPostings.open(cash(currency), fund(currency), main, request.amount()));
+\end{lstlisting}
+
+Сами проводки собраны в классе \texttt{DepositPostings}, который читается как таблица
+схемы (листинг~\ref{lst:postings}).
+
+\begin{lstlisting}[style=java, caption={Проводки приёма вклада и выплаты процентов (\texttt{DepositPostings})}, label={lst:postings}]
+public static List<Posting> open(String cash, String fund, String main, BigDecimal amount) {
+    return List.of(
+            Posting.of("Внесение денег в кассу", Entry.debit(cash, amount)),
+            Posting.of("Перевод денег с кассы на текущий счёт", Entry.credit(cash, amount), Entry.credit(main, amount)),
+            Posting.of("Использование денег банком", Entry.debit(main, amount), Entry.credit(fund, amount)));
+}
+
+public static Posting accrual(String fund, String interest, BigDecimal amount) {
+    return Posting.of("Начисление процентов по депозиту", Entry.debit(fund, amount), Entry.credit(interest, amount));
+}
+
+public static List<Posting> payout(String cash, String interest, BigDecimal amount) {
+    return List.of(
+            Posting.of("Перевод процентов в кассу", Entry.debit(interest, amount), Entry.debit(cash, amount)),
+            Posting.of("Вывод процентов из кассы", Entry.credit(cash, amount)));
+}
+\end{lstlisting}
+
+Открытие счёта в главной книге идемпотентно по паре <<договор, балансовый счёт>>, а пакет
+проводок --- по ключу \texttt{DEP-<номер>-OPEN}. Если сбой произойдёт после обращения к
+главной книге, но до сохранения договора, повтор запроса с тем же номером договора не
+создаст ни вторых счетов, ни вторых проводок.
+
+\subsection{Контроль корректности данных договора}
+
+Как и в первой работе, проверка двойная. Web-клиент проверяет форму до отправки, сервис
+повторяет проверки и добавляет те, что возможны только на сервере
+(таблица~\ref{tab:checks}). Ставка и дата начала в форме недоступны для редактирования,
+но сервис всё равно сверяет их: запрос может прийти мимо формы или из устаревшей страницы.
+
+\begin{table}[H]
+\caption{Проверки формы депозитного договора}
+\label{tab:checks}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXc}
+\toprule
+Поле & Правило & Где проверяется \\
+\midrule
+Клиент & выбран; существует в модуле <<Клиенты>> & клиент, сервис \\
+Номер договора & формат \texttt{Д-000001}; не занят & клиент, сервис \\
+Вид депозита & запись справочника; доступен в выбранной валюте & клиент, сервис \\
+Сумма & денежная; не меньше минимума программы & клиент, сервис \\
+Срок & целое число месяцев в пределах программы & клиент, сервис \\
+Процент & равен ставке программы & сервис \\
+Дата начала & равна текущему банковскому дню & сервис \\
+Дата окончания & равна дате начала плюс срок & сервис \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Обработка банковского дня}
+
+Обработка договора на дату нового дня показана в листинге~\ref{lst:day}. Каждый договор
+обрабатывается в собственной транзакции, а ключи пакетов включают дату, поэтому повторный
+вызов для того же дня ничего не меняет.
+
+\begin{lstlisting}[style=java, caption={Начисление, выплата и закрытие договора (\texttt{DepositService.processDay})}, label={lst:day}]
+boolean matured = !date.isBefore(contract.getEndDate());
+LocalDate upTo = matured ? contract.getEndDate() : date;
+
+BigDecimal target = InterestCalculator.accrued(contract.getAmount(), contract.getRate(), contract.getStartDate(), upTo);
+BigDecimal delta = target.subtract(contract.getAccrued());
+if (delta.signum() > 0) {
+    post(key(number, "ACCRUE-" + date), number, date,
+            List.of(DepositPostings.accrual(fund(currency), contract.getInterestAccount(), delta)));
+    contract.setAccrued(target);
+}
+
+int months = InterestCalculator.fullMonths(contract.getStartDate(), upTo);
+boolean monthlyPayout = contract.getProduct().getKind() == DepositKind.REVOCABLE && months > contract.getPaidMonths();
+if (matured || monthlyPayout) {
+    payInterest(contract, date);
+    contract.setPaidMonths(months);
+}
+if (matured) {
+    close(contract, date);
+}
+\end{lstlisting}
+
+\section{Тестирование}
+
+Сервисы покрыты 69 тестами (таблица~\ref{tab:tests}). Чтобы тестировать сервис депозитов
+без запуска соседних микросервисов, смежные сервисы заменяются двойниками: клиент модуля
+<<Клиенты>> --- заглушкой Mockito, а главная книга --- классом \texttt{InMemoryLedger},
+который реализует тот же интерфейс \texttt{LedgerApi} в памяти и соблюдает те же правила
+(сальдо по активности, запрет отрицательного остатка, идемпотентность). Это позволяет
+сверять в тестах обороты счетов с таблицей~\ref{tab:postings}.
+
+\begin{table}[H]
+\caption{Тесты сервисов счетов и депозитов}
+\label{tab:tests}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lcX}
+\toprule
+Класс тестов & Тестов & Что проверяется \\
+\midrule
+\multicolumn{3}{l}{\textit{account-service}} \\
+\texttt{AccountNumbersTest} & 7 & структура номера, контрольный ключ, сальдо по активности \\
+\texttt{LedgerServiceIT} & 8 & счета, обороты, атомарность пакета, идемпотентность \\
+\texttt{BankDayIT} & 6 & закрытие дня, недоступный и отказавший участник, REST \\
+\midrule
+\multicolumn{3}{l}{\textit{deposit-service}} \\
+\texttt{InterestCalculatorTest} & 13 & формула процентов, полные месяцы \\
+\texttt{DepositFlowIT} & 7 & проводки по схеме, выплаты, окончание и отзыв вклада \\
+\texttt{DepositApiIT} & 28 & контроль данных договора, ошибки смежных сервисов \\
+\midrule
+Всего & 69 & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Пример теста, который проходит весь срок срочного вклада и сверяет обороты со схемой,
+приведён в листинге~\ref{lst:test}; итог прогона --- в листинге~\ref{lst:run}.
+
+\begin{lstlisting}[style=java, caption={Тест срочного вклада (\texttt{DepositFlowIT})}, label={lst:test}]
+@Test
+@DisplayName("Срочный вклад: проценты выплачиваются в конце срока вместе с возвратом суммы")
+void irrevocableDepositPaysAtMaturity() {
+    DepositView deposit = open("Д-000002", IRREVOCABLE_BYN, "5000.00", 3);
+
+    closeDays(91);                                           // 31.12: до окончания срока один день
+    assertThat(view(deposit).paid()).isEqualByComparingTo("0");
+    assertThat(ledger.balance(deposit.interestAccount())).isEqualByComparingTo("160.81");
+
+    List<String> events = closeDays(1);                      // 01.01.2027: окончание договора, 92 дня
+    DepositView closed = view(deposit);
+    assertThat(closed.status()).isEqualTo("CLOSED");
+    assertThat(closed.paid()).isEqualByComparingTo("162.58");
+
+    // все счета клиента обнулились, касса транзитом пропустила вклад и проценты, фонд потратил проценты
+    assertTurnover(deposit.mainAccount(), "10000.00", "10000.00", "0.00");
+    assertTurnover(deposit.interestAccount(), "162.58", "162.58", "0.00");
+    assertTurnover(cash, "10162.58", "10162.58", "0.00");
+    assertThat(ledger.balance(fund)).isEqualByComparingTo(InMemoryLedger.CAPITAL.subtract(new BigDecimal("162.58")));
+}
+\end{lstlisting}
+
+\listingcaption{Результат выполнения тестов}{lst:run}
+\VerbatimInput[fontsize=\fontsize{7}{8.8}\selectfont, frame=single, rulecolor=\color{codeframe}, samepage=true]{listings/tests.txt}
+
+\section{Результаты работы}
+
+Сценарий демонстрации: два клиента открывают вклады по разным программам, банк
+работает три месяца, оба договора завершаются. Сервис счетов запущен со стартовым капиталом
+фонда развития 1\,000\,000 BYN.
+
+После старта в отчёте два собственных счёта банка в белорусских рублях --- касса и фонд
+развития (рисунок~\ref{fig:start}); справочник <<План счетов>> показан на
+рисунке~\ref{fig:chart}.
+
+\screenshot{img/accounts_start.png}{Отчёт по счетам после запуска: касса и фонд развития}{fig:start}
+
+\screenshot{img/chart.png}{Справочник <<План счетов>>}{fig:chart}
+
+Форма заключения договора приведена на рисунке~\ref{fig:form}. Клиент выбирается из
+списка, полученного от модуля <<Клиенты>>, вид депозита и валюта --- из справочников;
+ставка, дата начала и дата окончания подставляются автоматически. На
+рисунке~\ref{fig:errors} показан контроль данных: номер договора не соответствует формату,
+сумма меньше минимальной, срок больше допустимого по программе.
+
+\screenshot{img/form.png}{Форма заключения депозитного договора}{fig:form}
+
+\screenshot{img/form_errors.png}{Контроль корректности данных договора}{fig:errors}
+
+После заключения договора открывается его карточка (рисунок~\ref{fig:open}): созданы
+счета 3404 и 3470 на имя клиента, проведены три операции приёма вклада. У счёта вклада
+обороты по дебету и кредиту равны 10\,000, сальдо нулевое --- деньги переданы в фонд
+развития, как и предписывает схема.
+
+\screenshot{img/details_open.png}{Карточка договора: счета и проводки приёма вклада}{fig:open}
+
+Вторым договором открыт срочный вклад <<Online-решение>> на 5\,000 BYN. В отчёте по
+счетам (рисунок~\ref{fig:report-open}) теперь шесть счетов: касса, фонд развития и по два
+счёта на каждый договор. Фонд развития вырос на сумму обоих вкладов до 1\,015\,000 BYN.
+
+\screenshot{img/report_open.png}{Отчёт по счетам при двух активных депозитных программах}{fig:report-open}
+
+Процедура <<Закрытие банковского дня>> выполнена 31 раз подряд
+(рисунок~\ref{fig:report-month}). По отзывному вкладу проценты за месяц в размере 59,45 BYN
+начислены и выплачены, процентный счёт обнулился. По срочному вкладу начислено
+$5000 \cdot 12{,}9 \cdot 31 / 36500 = 54{,}78$ BYN, и эта сумма остаётся на счёте 3471 до
+конца срока. Фонд развития уменьшился на сумму начисленных процентов.
+
+\screenshot{img/report_month.png}{Отчёт по счетам через месяц и протокол закрытия дня}{fig:report-month}
+
+Карточка отзывного вклада через месяц и журнал проводок главной книги показаны на
+рисунках~\ref{fig:details-month} и~\ref{fig:journal}: видны ежедневные начисления, перевод
+процентов в кассу и их выдача.
+
+\screenshot[0.95\textwidth]{img/details_month.png}{Карточка отзывного вклада после выплаты процентов}{fig:details-month}
+
+\screenshot[0.95\textwidth]{img/journal.png}{Журнал проводок главной книги}{fig:journal}
+
+После закрытия ещё 61 дня наступает 1 января 2027 года --- дата окончания обоих
+договоров. Вклады возвращены, договоры закрыты (рисунок~\ref{fig:closed}). По отзывному
+вкладу за 92 дня выплачено 176,44 BYN, по срочному --- 162,58 BYN одной суммой. В итоговом
+отчёте (рисунок~\ref{fig:report-closed}) сальдо всех клиентских счетов и кассы нулевое, а
+фонд развития равен стартовому капиталу за вычетом выплаченных процентов:
+$1\,000\,000 - 176{,}44 - 162{,}58 = 999\,660{,}98$ BYN.
+
+\screenshot{img/list_closed.png}{Список договоров после окончания срока}{fig:closed}
+
+\screenshot{img/report_closed.png}{Итоговый отчёт по счетам}{fig:report-closed}
+
+\sectioncenter{Заключение}
+
+В работе реализованы два микросервиса: главная книга банка и сервис депозитных операций.
+Главная книга ведёт справочник <<План счетов>>, открывает лицевые счета с 13-значным
+номером и контрольным ключом, проводит операции атомарными пакетами и формирует отчёт о
+состоянии счетов. Сервис депозитов поддерживает две программы банка <<Решение>> ---
+отзывный вклад с ежемесячной выплатой процентов и срочный безотзывный вклад с выплатой
+в конце срока; при заключении договора он открывает два счёта клиента и выполняет проводки
+строго по схеме из задания.
+
+Процедура <<Закрытие банковского дня>> построена как взаимодействие сервисов: главная
+книга объявляет новую дату, сервис депозитов начисляет и выплачивает проценты. Идемпотентные
+ключи проводок, сдвиг даты после успешной обработки и накопительный расчёт процентов делают
+процедуру устойчивой к повторам и к временной недоступности участника --- это те свойства,
+без которых распределённая система не может надёжно работать с деньгами.
+
+Данные о клиентах берутся из модуля первой работы по REST. Корректность проверена 69
+автоматическими тестами, в том числе сверкой оборотов всех счетов со схемой проводок на
+полном жизненном цикле договора.
+
+\sectioncenter{Список использованных источников}
+
+\begin{enumerate}
+\item Об установлении Плана счетов бухгалтерского учёта в банках и небанковских
+кредитно-финансовых организациях Республики Беларусь: постановление Правления Национального
+банка Республики Беларусь от 29.08.2013 №\,506 [Электронный ресурс]. --- Режим доступа:
+\url{https://www.nbrb.by/legislation/accountingreporting}. --- Дата доступа: 01.10.2026.
+\item Вклады для физических лиц~/ ЗАО <<Банк <<Решение>> [Электронный ресурс]. --- Режим
+доступа: \url{https://rbank.by/life/deposits/}. --- Дата доступа: 01.10.2026.
+\item Ньюмен, С. Создание микросервисов~/ С.~Ньюмен. --- 2-е изд. --- СПб.: Питер, 2023. ---
+624~с.
+\item Ричардсон, К. Микросервисы. Паттерны разработки и рефакторинга~/ К.~Ричардсон. ---
+СПб.: Питер, 2019. --- 544~с.
+\item Spring Framework Reference: REST Clients, HTTP Interface [Электронный ресурс]. ---
+Режим доступа: \url{https://docs.spring.io/spring-framework/reference/integration/rest-clients.html}.
+--- Дата доступа: 01.10.2026.
+\end{enumerate}
+
+\appendixtitle{А}{Исходный код сервисов счетов и депозитов}
+
+\input{appendix}
+
+\end{document}

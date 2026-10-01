@@ -209,11 +209,11 @@ const app = Vue.createApp({
             <tbody>
               <tr v-for="client in clients" :key="client.id">
                 <td class="fio">{{ client.fullName }}</td>
-                <td>{{ client.birthDate }}</td>
+                <td class="nowrap">{{ client.birthDate }}</td>
                 <td class="mono">{{ client.passportSeries }} {{ client.passportNumber }}</td>
                 <td class="mono">{{ client.identificationNumber }}</td>
                 <td>{{ client.residenceCity }}</td>
-                <td>{{ client.mobilePhone }}</td>
+                <td class="nowrap">{{ client.mobilePhone }}</td>
                 <td class="num">{{ money(client.monthlyIncome) }}</td>
                 <td class="actions">
                   <button class="small edit" @click="openEdit(client.id)">Изменить</button>

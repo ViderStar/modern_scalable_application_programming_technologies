@@ -1,0 +1,577 @@
+\documentclass[14pt,a4paper]{extarticle}
+\input{../../preamble}
+
+\begin{document}
+
+\makelabtitle{1}{Микросервис ввода и модификации данных о клиентах банка. Модуль <<Клиенты>>}
+
+\tableofcontents
+
+\section{Цель работы}
+
+Разработать учебную подсистему ввода и модификации данных о клиентах условного банка:
+спроектировать схему данных со справочниками, реализовать микросервис с REST-интерфейсом
+на Java и Spring, web-клиент с формами <<Список клиентов>> и добавления, редактирования и
+удаления клиента, обеспечить проверку вводимых значений дважды --- в браузере и в сервисе ---
+и покрыть разработанное ПО модульными, интеграционными и функциональными тестами.
+
+\section{Задание}
+
+Работа выполнена по варианту №\,4. Номер варианта определяет состав полей клиента: вариант
+чётный, поэтому в форму
+входит поле <<Пол>> и не входят <<Место работы>> и <<Должность>>; $4 \bmod 3 = 1$, поэтому
+из трёх полей <<Город прописки>>, <<Адрес прописки>> и <<Военнообязанный>> реализуется первое.
+Итоговый состав полей приведён в таблице~\ref{tab:fields}.
+
+\begin{table}[H]
+\caption{Поля клиента для варианта №\,4}
+\label{tab:fields}
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{lXcl}
+\toprule
+Поле & Тип & Обяз. & Контроль значения \\
+\midrule
+Фамилия, имя, отчество & текстовый & да & только буквы \\
+Дата рождения & дата & да & существующая дата, не позднее сегодня \\
+Пол & radio & да & мужской или женский \\
+Серия паспорта & текстовый & да & две латинские буквы \\
+№ паспорта & текстовый с маской & да & 7 цифр, уникален вместе с серией \\
+Кем выдан & текстовый & да & не пусто \\
+Дата выдачи & дата & да & не раньше даты рождения \\
+Идентификационный номер & текстовый с маской & да & \texttt{3140301A001PB5}, уникален \\
+Место рождения & текстовый & да & не пусто \\
+Город проживания & список & да & значение справочника \\
+Адрес проживания & текстовый & да & не пусто \\
+Телефон домашний & текстовый с маской & нет & \texttt{293-88-44} \\
+Телефон мобильный & текстовый с маской & нет & \texttt{+375 (29) 314-15-92} \\
+E-mail & текстовый & нет & формат адреса \\
+Город прописки & список & да & значение справочника \\
+Семейное положение & список & да & значение справочника \\
+Гражданство & список & да & значение справочника \\
+Инвалидность & список & да & значение справочника \\
+Пенсионер & checkbox & да & да или нет \\
+Ежемесячный доход & денежный & нет & неотрицательная сумма \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Требования задания:
+\begin{enumerate}
+\item разработать схему данных со справочниками для элементов типа <<Список>> и реализовать
+её в СУБД, работающей в памяти; база заполняется автоматически при старте;
+\item создать микросервис для REST-подключения к базе данных;
+\item разработать web-клиент с формой <<Список клиентов>>, отсортированной по фамилиям,
+и формой добавления, удаления и редактирования клиентов;
+\item проверять значения каждого поля дважды --- на клиенте и в REST;
+\item добавить в базу не менее пяти клиентов, включая себя;
+\item протестировать ПО на WebDriver с базой H2 в памяти по пунктам программы защиты.
+\end{enumerate}
+
+\section{Проектирование}
+
+\subsection{Архитектура}
+
+Модуль реализован как самостоятельный микросервис: у сервиса \texttt{client-service} своя
+база данных, собственный REST-интерфейс и собственный web-клиент, который раздаётся тем же
+процессом как статический ресурс. Остальные модули банка (депозиты, кредиты) получают сведения
+о клиентах только через REST, поэтому сервис можно развернуть, остановить и масштабировать
+независимо от них. Структура сервиса показана на рисунке~\ref{fig:arch}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=7mm and 12mm]
+\node[box, minimum width=4.2cm, minimum height=1.25cm, fill=codekw!6] (ui)
+  {Web-клиент (Vue 3)\\[-1pt]{\footnotesize формы, маски ввода,}\\[-3pt]{\footnotesize первичная валидация}};
+\node[box, right=24mm of ui, minimum width=4.4cm] (ctl) {ClientController\\[-1pt]{\footnotesize REST, \texttt{@Valid}}};
+\node[box, below=of ctl, minimum width=4.4cm] (svc) {ClientService\\[-1pt]{\footnotesize бизнес-правила, уникальность}};
+\node[box, below=of svc, minimum width=4.4cm] (repo) {Spring Data JPA\\[-1pt]{\footnotesize репозитории}};
+\node[db, below=7mm of repo] (h2) {H2 в памяти};
+\node[box, right=14mm of svc, minimum width=3.4cm] (adv) {ApiExceptionHandler\\[-1pt]{\footnotesize ответы 400, 404, 409}};
+\draw[flow, <->] (ui) -- node[above, note] {JSON / HTTP} (ctl);
+\draw[flow] (ctl) -- (svc);
+\draw[flow] (svc) -- (repo);
+\draw[flow] (repo) -- (h2);
+\draw[flow, dashed] (svc) -- node[above, note] {ошибки} (adv);
+\draw[flow, dashed] (ctl.east) -| (adv.north);
+\begin{scope}[on background layer]
+\node[draw=black!40, dashed, rounded corners=3pt, fit=(ctl)(svc)(repo)(h2)(adv), inner sep=8pt,
+      label={[note]above:{микросервис client-service, порт 8081}}] {};
+\end{scope}
+\end{tikzpicture}
+\caption{Структура микросервиса <<Клиенты>>}
+\label{fig:arch}
+\end{figure}
+
+Использованные технологии: Java~17, Spring Boot~3.5 (Spring MVC, Spring Data JPA, Bean
+Validation), H2 в режиме in-memory, Vue~3 на стороне браузера, JUnit~5, Mockito, MockMvc и
+Selenium WebDriver в тестах, Maven в качестве системы сборки. Библиотека Vue подключается из
+webjar и раздаётся самим сервисом, поэтому для запуска не нужны ни Node.js, ни доступ в
+интернет.
+
+\subsection{Схема данных}
+
+Каждое поле типа <<Список>> вынесено в отдельный справочник: \texttt{city} (используется
+дважды --- для города проживания и города прописки), \texttt{marital\_status},
+\texttt{citizenship} и \texttt{disability}. Таблица \texttt{client} ссылается на справочники
+внешними ключами (рисунок~\ref{fig:er}). Пол хранится символом \texttt{M}/\texttt{F} с
+ограничением \texttt{check}, поскольку набор значений фиксирован и справочник для него не нужен.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[entity, text width=6.4cm] (client) {\textbf{client}
+  \nodepart{two}
+  id \hfill PK\\ last\_name, first\_name, middle\_name\\ birth\_date, sex, birth\_place\\
+  passport\_series, passport\_number \hfill UQ\\ issued\_by, issue\_date\\
+  identification\_number \hfill UQ\\ residence\_city\_id \hfill FK\\ residence\_address\\
+  home\_phone, mobile\_phone, email\\ registration\_city\_id \hfill FK\\ marital\_status\_id \hfill FK\\
+  citizenship\_id \hfill FK\\ disability\_id \hfill FK\\ pensioner, monthly\_income};
+\node[entity, text width=3.1cm, right=26mm of client.north east, anchor=north west] (city) {\textbf{city}\nodepart{two} id \hfill PK\\ name \hfill UQ};
+\node[entity, text width=3.1cm, below=5mm of city] (ms) {\textbf{marital\_status}\nodepart{two} id \hfill PK\\ name \hfill UQ};
+\node[entity, text width=3.1cm, below=5mm of ms] (cz) {\textbf{citizenship}\nodepart{two} id \hfill PK\\ name \hfill UQ};
+\node[entity, text width=3.1cm, below=5mm of cz] (dis) {\textbf{disability}\nodepart{two} id \hfill PK\\ name \hfill UQ};
+\draw[flow] (client.east |- city.west) -- node[above, note] {N : 1 (дважды)} (city.west);
+\draw[flow] (client.east |- ms.west) -- node[above, note] {N : 1} (ms.west);
+\draw[flow] (client.east |- cz.west) -- node[above, note] {N : 1} (cz.west);
+\draw[flow] (client.east |- dis.west) -- node[above, note] {N : 1} (dis.west);
+\end{tikzpicture}
+\caption{Схема данных модуля <<Клиенты>>}
+\label{fig:er}
+\end{figure}
+
+Схема создаётся сценарием \texttt{schema.sql}, справочники и шесть тестовых клиентов
+(включая автора работы) загружаются сценарием \texttt{data.sql} при каждом старте приложения.
+Hibernate работает в режиме \texttt{ddl-auto=validate}: он не создаёт таблицы сам, а сверяет
+сущности с явно описанной схемой и не даст сервису стартовать при расхождении. Ограничения
+уникальности вынесены в саму базу (листинг~\ref{lst:schema}) --- это последний рубеж защиты
+от дублей, который срабатывает даже в обход сервиса.
+
+\begin{lstlisting}[style=sql, caption={Фрагмент \texttt{schema.sql}: ссылки на справочники и уникальность}, label={lst:schema}]
+create table client (
+    id                    bigint generated by default as identity primary key,
+    last_name             varchar(60)  not null,
+    ...
+    sex                   varchar(1)   not null check (sex in ('M', 'F')),
+    residence_city_id     bigint       not null references city,
+    registration_city_id  bigint       not null references city,
+    marital_status_id     bigint       not null references marital_status,
+    citizenship_id        bigint       not null references citizenship,
+    disability_id         bigint       not null references disability,
+    pensioner             boolean      not null,
+    monthly_income        decimal(14, 2),
+    constraint uq_client_passport unique (passport_series, passport_number),
+    constraint uq_client_identification unique (identification_number)
+);
+\end{lstlisting}
+
+\subsection{REST-интерфейс}
+
+Сервис предоставляет шесть операций (таблица~\ref{tab:rest}). Данные передаются в JSON,
+даты --- текстом в формате \texttt{ДД.ММ.ГГГГ}: это позволяет серверу самому решать, является
+ли присланная строка датой, и возвращать ошибку конкретного поля, а не общий сбой разбора
+запроса. Любая ошибка возвращается в едином виде --- общее сообщение и словарь
+<<поле --- сообщение>>, по которому web-клиент подсвечивает поля формы.
+
+\begin{table}[H]
+\caption{REST-интерфейс микросервиса <<Клиенты>>}
+\label{tab:rest}
+\centering
+\small
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Метод & Адрес & Назначение и коды ответа \\
+\midrule
+GET & \texttt{/api/clients} & список клиентов, отсортированный по фамилии; 200 \\
+GET & \texttt{/api/clients/\{id\}} & данные клиента; 200, 404 \\
+POST & \texttt{/api/clients} & добавление; 201, 400 --- ошибка валидации, 409 --- дубль \\
+PUT & \texttt{/api/clients/\{id\}} & изменение; 200, 400, 404, 409 \\
+DELETE & \texttt{/api/clients/\{id\}} & удаление; 204, 404 \\
+GET & \texttt{/api/dictionaries} & содержимое четырёх справочников для списков формы \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Реализация}
+
+\subsection{Структура проекта}
+
+Сервис является модулем многомодульного Maven-проекта банка. Код разложен по слоям
+(листинг~\ref{lst:tree}); общие для всех web-клиентов стили, маски ввода и обёртка над
+\texttt{fetch} вынесены в модуль \texttt{ui-kit}.
+
+\listingcaption{Структура модуля \texttt{client-service}}{lst:tree}
+\begin{Verbatim}[fontsize=\footnotesize, frame=single, rulecolor=\color{codeframe}]
+src/main/java/by/bsuir/bank/client/
+  domain/        Client, справочники City, MaritalStatus, Citizenship, Disability
+  repository/    репозитории Spring Data JPA
+  dto/           ClientRequest (форма с правилами валидации), ClientResponse, ApiError
+  validation/    Masks — маски полей, Dates и @DateText — строгая проверка дат
+  service/       ClientService — уникальность, справочники, сохранение
+  web/           ClientController, DictionaryController, ApiExceptionHandler
+src/main/resources/
+  schema.sql     схема данных          data.sql   справочники и тестовые клиенты
+  static/        index.html, app.js — web-клиент на Vue 3
+src/test/java/   модульные (*Test), интеграционные и функциональные (*IT) тесты
+\end{Verbatim}
+
+\subsection{Web-клиент}
+
+Web-клиент --- одностраничное приложение на Vue~3 с двумя формами. Форма <<Список
+клиентов>> запрашивает \texttt{GET /api/clients} и показывает таблицу; сортировку по фамилии
+выполняет сервис, чтобы порядок был одинаковым для любого потребителя REST. Форма клиента
+используется и для добавления, и для редактирования; удаление доступно из списка и из формы.
+
+Форма построена по описанию полей: для каждого поля в одном месте заданы подпись, тип,
+обязательность, маска ввода и функция проверки, а разметка и валидация генерируются по этому
+описанию. Добавление поля сводится к одной строке, и расхождение между тем, что нарисовано,
+и тем, что проверяется, становится невозможным. Маска (\texttt{\#}~--- цифра, \texttt{A}~---
+латинская буква) применяется при каждом нажатии клавиши: недопустимые символы отбрасываются,
+разделители расставляются автоматически, поэтому в поле даты физически нельзя набрать текст.
+
+\subsection{Двойная проверка маски и обязательности}
+
+Проверка значений выполняется дважды. Первичная проверка в браузере нужна для удобства:
+пользователь сразу видит сообщения у полей и не ждёт ответа сервера. Но она не защищает
+базу --- запрос можно отправить в обход формы, поэтому сервис повторяет все проверки, и
+именно он является источником истины.
+
+Первичная проверка на клиенте показана в листинге~\ref{lst:client-validation}. Полужирным
+выделен фрагмент, который для каждого поля проверяет обязательность (признак
+\texttt{required}) и соответствие маске (функция \texttt{check} с регулярным выражением).
+
+\begin{lstlisting}[style=js, style=marked, caption={Первичная проверка в web-клиенте (\texttt{static/app.js})}, label={lst:client-validation}]
+const SECTIONS = [
+  ...
+  { title: 'Паспортные данные', fields: [
+    { name: 'passportSeries', label: 'Серия паспорта', @b@required: true, mask: 'AA'@/b@, placeholder: 'MP',
+      @b@check: v => /^[A-Z]{2}$/.test(v) || 'Серия — две заглавные латинские буквы'@/b@ },
+    { name: 'passportNumber', label: '№ паспорта', @b@required: true, mask: '#######'@/b@, placeholder: '1234567',
+      @b@check: v => /^\d{7}$/.test(v) || 'Номер паспорта — семь цифр'@/b@ },
+    { name: 'identificationNumber', label: 'Идентификационный номер', @b@required: true,
+      mask: '#######A###AA#'@/b@, placeholder: '3140301A001PB5',
+      @b@check: v => /^\d{7}[A-Z]\d{3}[A-Z]{2}\d$/.test(v) || 'Формат: 7 цифр, буква, 3 цифры, 2 буквы, цифра'@/b@ },
+    ...
+];
+
+/* Проверка формы перед отправкой: возвращает { имяПоля: сообщение }. Пустой объект — ошибок нет. */
+function validate(form) {
+  const errors = {};
+  @b@for (const field of FIELDS) {
+    const raw = form[field.name];
+    const value = typeof raw === 'string' ? raw.trim() : raw;
+    const empty = value === null || value === undefined || value === '';
+    if (empty) {
+      if (field.required) errors[field.name] = REQUIRED;
+      continue;
+    }
+    const result = field.check ? field.check(value, form) : true;
+    if (result !== true) errors[field.name] = result;
+  }@/b@
+  return errors;
+}
+\end{lstlisting}
+
+Проверка в сервисе (листинг~\ref{lst:server-validation}) описана декларативно аннотациями
+Bean Validation на записи \texttt{ClientRequest}; контроллер помечает параметр аннотацией
+\texttt{@Valid}, и до бизнес-логики запрос с ошибками не доходит. Полужирным выделены
+ограничения обязательности (\texttt{@NotBlank}, \texttt{@NotNull}) и маски (\texttt{@Pattern},
+\texttt{@DateText}). Регулярные выражения масок собраны в классе \texttt{Masks} и по
+содержанию совпадают с выражениями web-клиента.
+
+\begin{lstlisting}[style=java, style=marked, caption={Серверная проверка: запись \texttt{ClientRequest} и маски \texttt{Masks}}, label={lst:server-validation}]
+public record ClientRequest(
+
+        @b@@NotBlank(message = REQUIRED)@/b@ @Size(max = 60, message = TOO_LONG)
+        @b@@Pattern(regexp = Masks.NAME, message = LETTERS_ONLY)@/b@
+        String lastName,
+        ...
+        @b@@NotBlank(message = REQUIRED) @DateText@/b@
+        String birthDate,
+
+        @b@@NotBlank(message = REQUIRED)
+        @Pattern(regexp = Masks.PASSPORT_SERIES, message = "Серия — две заглавные латинские буквы")@/b@
+        String passportSeries,
+
+        @b@@NotBlank(message = REQUIRED)
+        @Pattern(regexp = Masks.PASSPORT_NUMBER, message = "Номер паспорта — семь цифр")@/b@
+        String passportNumber,
+        ...
+        @b@@NotBlank(message = REQUIRED)
+        @Pattern(regexp = Masks.IDENTIFICATION_NUMBER, message = "Формат: 7 цифр, буква, 3 цифры, 2 буквы, цифра")@/b@
+        String identificationNumber,
+        ...
+        @b@@Pattern(regexp = Masks.MOBILE_PHONE, message = "Формат: +375 (29) 314-15-92")@/b@
+        String mobilePhone,
+
+        @b@@NotNull(message = REQUIRED)@/b@
+        Long residenceCityId,
+        ...
+) { ... }
+
+public final class Masks {
+    public static final String NAME = "^[А-Яа-яЁёA-Za-z]+(?:[-' ][А-Яа-яЁёA-Za-z]+)*$";
+    @b@public static final String PASSPORT_SERIES = "^[A-Z]{2}$";
+    public static final String PASSPORT_NUMBER = "^\\d{7}$";
+    public static final String IDENTIFICATION_NUMBER = "^\\d{7}[A-Z]\\d{3}[A-Z]{2}\\d$";
+    public static final String HOME_PHONE = "^$|^\\d{3}-\\d{2}-\\d{2}$";
+    public static final String MOBILE_PHONE = "^$|^\\+375 \\((25|29|33|44)\\) \\d{3}-\\d{2}-\\d{2}$";@/b@
+}
+
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public ClientResponse create(@b@@Valid@/b@ @RequestBody ClientRequest request) {
+    return service.create(request);
+}
+\end{lstlisting}
+
+Три детали серверной проверки заслуживают отдельного пояснения.
+
+\textbf{Пробел вместо имени.} Компактный конструктор записи отбрасывает пробелы по краям
+всех строк ещё до проверок, поэтому строка из одного пробела превращается в пустую и
+отклоняется как незаполненное обязательное поле.
+
+\textbf{Несуществующая дата.} Стандартный разбор даты в Java по умолчанию работает в режиме
+\texttt{SMART} и молча превращает 31~февраля в 28-е. Для строгой проверки формат создаётся с
+\texttt{ResolverStyle.STRICT} (листинг~\ref{lst:dates}): и 31.02.2015, и 29.02.2015
+отвергаются, а 29.02.2016 принимается. Собственное ограничение \texttt{@DateText}
+дополнительно требует, чтобы дата лежала между 01.01.1900 и сегодняшним днём.
+
+\begin{lstlisting}[style=java, caption={Строгий разбор даты (\texttt{validation/Dates.java})}, label={lst:dates}]
+public static final DateTimeFormatter FORMAT =
+        DateTimeFormatter.ofPattern("dd.MM.uuuu").withResolverStyle(ResolverStyle.STRICT);
+
+public static Optional<LocalDate> parse(String text) {
+    if (text == null) {
+        return Optional.empty();
+    }
+    try {
+        return Optional.of(LocalDate.parse(text.trim(), FORMAT));
+    } catch (DateTimeParseException e) {
+        return Optional.empty();
+    }
+}
+\end{lstlisting}
+
+\textbf{Необязательные поля.} Для телефонов и e-mail маска допускает пустую строку
+(\texttt{\textasciicircum\$|...}), а сервис сохраняет пустое значение как \texttt{NULL}:
+запись клиента только с обязательными полями выполняется без ошибок.
+
+\subsection{Уникальность паспорта и идентификационного номера}
+
+Маска не может обнаружить повторный ввод того же клиента --- это правило проверяется в
+сервисе обращением к базе (листинг~\ref{lst:unique}). При редактировании собственная запись
+клиента из сравнения исключается, иначе его нельзя было бы сохранить без смены паспорта.
+Нарушение возвращается с кодом 409 и сообщениями у полей паспорта и идентификационного
+номера. Если два одинаковых запроса придут одновременно и оба пройдут проверку, второй
+будет остановлен ограничением уникальности в базе; обработчик ошибок превращает
+\texttt{DataIntegrityViolationException} в тот же ответ 409.
+
+\begin{lstlisting}[style=java, caption={Проверка уникальности (\texttt{service/ClientService.java})}, label={lst:unique}]
+private void checkUnique(ClientRequest request, Long selfId) {
+    Map<String, String> errors = new LinkedHashMap<>();
+    clients.findByPassportSeriesAndPassportNumber(request.passportSeries(), request.passportNumber())
+            .filter(other -> !other.getId().equals(selfId))
+            .ifPresent(other -> {
+                errors.put("passportSeries", DUPLICATE_PASSPORT);
+                errors.put("passportNumber", DUPLICATE_PASSPORT);
+            });
+    clients.findByIdentificationNumber(request.identificationNumber())
+            .filter(other -> !other.getId().equals(selfId))
+            .ifPresent(other -> errors.put("identificationNumber", DUPLICATE_IDENTIFICATION));
+    if (!errors.isEmpty()) {
+        throw new FieldErrorException(HttpStatus.CONFLICT, "Такой клиент уже есть в базе", errors);
+    }
+}
+\end{lstlisting}
+
+\section{Тестирование}
+
+\subsection{Уровни тестов}
+
+Тесты образуют пирамиду из трёх уровней (таблица~\ref{tab:tests}). Модульные тесты
+запускаются на фазе \texttt{test} и не поднимают Spring; интеграционные и функциональные
+(имена классов оканчиваются на \texttt{IT}) выполняются плагином Failsafe на фазе
+\texttt{verify}. Все уровни используют базу H2 в памяти; у каждого класса тестов своя база,
+поэтому тесты не влияют друг на друга.
+
+\begin{table}[H]
+\caption{Тесты микросервиса <<Клиенты>>}
+\label{tab:tests}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lcX}
+\toprule
+Класс тестов & Тестов & Что проверяется \\
+\midrule
+\multicolumn{3}{l}{\textit{Модульные --- без Spring и базы данных}} \\
+\texttt{DateTextValidatorTest} & 16 & существующие и несуществующие даты \\
+\texttt{ClientRequestValidationTest} & 49 & маски и обязательность каждого поля \\
+\texttt{ClientServiceTest} & 8 & уникальность и справочники на заглушках Mockito \\
+\midrule
+\multicolumn{3}{l}{\textit{Интеграционные --- сервис целиком и H2}} \\
+\texttt{ClientApiIT} & 39 & REST через MockMvc, серверная валидация, состояние таблицы \\
+\midrule
+\multicolumn{3}{l}{\textit{Функциональные --- браузер через WebDriver}} \\
+\texttt{ClientUiIT} & 36 & сценарии программы защиты в web-клиенте \\
+\midrule
+Всего & 148 & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Программа защиты в виде автоматических тестов}
+
+Функциональные тесты повторяют пункты, по которым проводится защита работы
+(таблица~\ref{tab:defense}). Под данными <<Иванов Иван Иванович>> в задании понимаются данные
+студента; в тестах пунктов 2 и 3 новый клиент вводится с паспортом и идентификационным
+номером клиента Лебедевич из начального заполнения базы. Каждый тест после действий в
+браузере выполняет SQL-запрос к таблице \texttt{client} --- проверку <<прямо в базе>>.
+
+\begin{table}[H]
+\caption{Соответствие пунктов защиты и тестов}
+\label{tab:defense}
+\centering
+\small
+\begin{tabularx}{\textwidth}{cXl}
+\toprule
+Пункт & Сценарий и ожидаемый результат & Тест \texttt{ClientUiIT} \\
+\midrule
+1 & те же данные ещё раз --- ошибка, в базе один клиент & \texttt{sameClientTwice} \\
+2 & другой клиент с тем же паспортом --- ошибка & \texttt{anotherClientWithSamePassport} \\
+3 & другой клиент с тем же идентификационным номером --- ошибка & \texttt{...SameIdentificationNumber} \\
+4 & фамилия <<1234>> --- ошибка, фамилии 1234 в базе нет & \texttt{digitsInsteadOfLastName} \\
+5 & пробел вместо имени --- ошибка, клиент не записан & \texttt{spaceInsteadOfFirstName} \\
+6 & не дата, 31.02.2015, 29.02.2015; все поля с маской & \texttt{birthDateIsNotDate}, \texttt{maskedFields} \\
+7 & нет одного обязательного поля (17 вариантов) --- ошибка & \texttt{requiredFieldIsMissing} \\
+8 & только обязательные поля --- клиент записан & \texttt{onlyRequiredFields} \\
+9 & двойная проверка на клиенте и на сервере & листинги~\ref{lst:client-validation}, \ref{lst:server-validation} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Поскольку web-клиент не пропускает некорректные данные до сервера, серверная валидация
+проверяется отдельно: интеграционные тесты \texttt{ClientApiIT} отправляют те же неверные
+данные прямо в REST, минуя браузер, и убеждаются, что сервис отвечает кодом 400 или 409 и
+ничего не пишет в базу. Пример теста каждого уровня приведён в листингах~\ref{lst:it}
+и~\ref{lst:ui}.
+
+\begin{lstlisting}[style=java, caption={Интеграционный тест пункта 6 (\texttt{ClientApiIT})}, label={lst:it}]
+@ParameterizedTest(name = "дата рождения «{0}»")
+@ValueSource(strings = {"не дата", "31.02.2015", "29.02.2015"})
+@DisplayName("п.6 Текст, не являющийся датой, — ошибка")
+void birthDateIsNotDate(String birthDate) throws Exception {
+    create(TestClients.with("birthDate", birthDate))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.fields.birthDate").exists());
+
+    assertThat(count("last_name = 'Иванов'")).isZero();
+}
+
+/** Проверка «прямо в базе»: SQL-запрос к таблице client в обход сервиса и репозиториев. */
+private int count(String where) {
+    return jdbc.queryForObject("select count(*) from client where " + where, Integer.class);
+}
+\end{lstlisting}
+
+\begin{lstlisting}[style=java, caption={Функциональный тест пункта 2 через WebDriver (\texttt{ClientUiIT})}, label={lst:ui}]
+@Test
+@DisplayName("п.2 Другой клиент с паспортом студента — сообщение об ошибке")
+void anotherClientWithSamePassport() {
+    Map<String, Object> other = TestClients.valid();
+    other.put("passportSeries", "MP");
+    other.put("passportNumber", "3141592");          // паспорт клиента Лебедевич из начальных данных
+    fill(other);
+    save();
+
+    assertThat(error("passportSeries")).isEqualTo("Клиент с таким паспортом уже зарегистрирован");
+    assertThat(count("passport_series = 'MP' and passport_number = '3141592'")).isEqualTo(1);
+    assertThat(count("last_name = 'Иванов'")).isZero();
+}
+\end{lstlisting}
+
+\subsection{Результаты прогона}
+
+Команда \texttt{./mvnw -pl client-service -am verify} собирает сервис и выполняет все
+148~тестов; функциональные тесты запускают Chrome без окна, драйвер для него загружает
+Selenium Manager. Итог прогона приведён в листинге~\ref{lst:run}.
+
+\listingcaption{Результат выполнения тестов}{lst:run}
+\VerbatimInput[fontsize=\fontsize{7}{8.8}\selectfont, frame=single, rulecolor=\color{codeframe}, samepage=true]{listings/tests.txt}
+
+\section{Результаты работы}
+
+После запуска сервис доступен по адресу \texttt{http://localhost:8081}. Форма <<Список
+клиентов>> с начальным заполнением базы показана на рисунке~\ref{fig:list}: шесть клиентов
+отсортированы по фамилии.
+
+\screenshot{img/list.png}{Форма <<Список клиентов>>}{fig:list}
+
+Форма добавления клиента, заполненная корректными данными, приведена на
+рисунке~\ref{fig:form}. Обязательные поля отмечены звёздочкой, списки заполнены из
+справочников, значения полей с маской набраны с автоматической расстановкой разделителей.
+
+\screenshot[0.92\textwidth]{img/form.png}{Форма добавления клиента}{fig:form}
+
+На рисунке~\ref{fig:errors} показана реакция первичной проверки на ошибки из программы
+защиты: цифры в фамилии, пробел вместо имени, дата 31.02.2015, неполный номер паспорта,
+мобильный телефон с недопустимым кодом и неполный e-mail. Запрос на сервер при этом не
+отправляется.
+
+\screenshot[0.92\textwidth]{img/form_errors.png}{Сообщения первичной проверки в браузере}{fig:errors}
+
+Ошибку повторного ввода обнаруживает только сервер. На рисунке~\ref{fig:duplicate} новый
+клиент введён с паспортом и идентификационным номером, которые уже принадлежат клиенту из
+базы: сервис ответил кодом 409, а web-клиент показал его сообщения у соответствующих полей.
+
+\screenshot[0.92\textwidth]{img/form_duplicate.png}{Сообщения сервиса о нарушении уникальности}{fig:duplicate}
+
+После исправления данных клиент сохраняется и появляется в списке на своём месте по
+алфавиту (рисунок~\ref{fig:added}).
+
+\screenshot{img/list_added.png}{Список после добавления клиента}{fig:added}
+
+Состояние таблицы можно проверить напрямую в консоли H2 по адресу \texttt{/h2-console}
+(JDBC URL \texttt{jdbc:h2:mem:clients}). На рисунке~\ref{fig:h2} видно, что после всех
+попыток в таблице семь записей и нет ни одинаковых паспортов, ни одинаковых идентификационных
+номеров, ни клиента с фамилией <<1234>>.
+
+\screenshot{img/h2.png}{Таблица \texttt{client} в консоли H2}{fig:h2}
+
+\sectioncenter{Заключение}
+
+В ходе работы разработан микросервис <<Клиенты>> на Java и Spring Boot с базой данных H2
+в памяти, REST-интерфейсом и web-клиентом на Vue~3. Схема данных содержит таблицу клиентов и
+четыре справочника для полей типа <<Список>>; база создаётся и заполняется автоматически при
+старте приложения.
+
+Корректность данных обеспечивается на трёх уровнях. Web-клиент применяет маски ввода и
+проверяет форму до отправки, сервис повторяет проверку масок и обязательности средствами
+Bean Validation и контролирует уникальность паспорта и идентификационного номера, а база
+данных хранит ограничения уникальности и ссылочной целостности. Такое разделение
+соответствует практике реальных банковских систем: проверка в браузере служит удобству
+пользователя, а гарантии целостности даёт только сервер.
+
+Работоспособность подтверждена 148 автоматическими тестами: 73 модульными, 39
+интеграционными и 36 функциональными, которые через WebDriver проходят все пункты программы
+защиты и сверяют результат с содержимым таблицы в базе.
+
+\sectioncenter{Список использованных источников}
+
+\begin{enumerate}
+\item Уоллс, К. Spring в действии / К.~Уоллс. --- 6-е изд. --- М.: ДМК Пресс, 2022. --- 544~с.
+\item Spring Boot Reference Documentation [Электронный ресурс]. --- Режим доступа:
+\url{https://docs.spring.io/spring-boot/}. --- Дата доступа: 01.10.2026.
+\item Jakarta Bean Validation 3.0 Specification [Электронный ресурс]. --- Режим доступа:
+\url{https://jakarta.ee/specifications/bean-validation/3.0/}. --- Дата доступа: 01.10.2026.
+\item Selenium WebDriver Documentation [Электронный ресурс]. --- Режим доступа:
+\url{https://www.selenium.dev/documentation/webdriver/}. --- Дата доступа: 01.10.2026.
+\item Vue.js Guide [Электронный ресурс]. --- Режим доступа: \url{https://vuejs.org/guide/}. ---
+Дата доступа: 01.10.2026.
+\end{enumerate}
+
+\appendixtitle{А}{Исходный код микросервиса <<Клиенты>>}
+
+\input{appendix}
+
+\end{document}

@@ -1,0 +1,10 @@
+$ ./mvnw -pl client-service -am verify
+
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.061 s -- in by.bsuir.bank.client.DateTextValidatorTest
+Tests run:  8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.576 s -- in by.bsuir.bank.client.ClientServiceTest
+Tests run: 49, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.378 s -- in by.bsuir.bank.client.ClientRequestValidationTest
+Tests run: 39, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.135 s -- in by.bsuir.bank.client.ClientApiIT
+Tests run: 36, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  39.92 s -- in by.bsuir.bank.client.ClientUiIT
+
+Tests run: 148, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS

@@ -215,6 +215,12 @@ const app = Vue.createApp({
     cardNumber(number) {
       return number ? number.replace(/(\d{4})(?=\d)/g, '$1 ') : '';
     },
+    /* Возврат к списку: сообщения карточки договора больше не нужны. */
+    toList() {
+      this.notice = '';
+      this.envelope = null;
+      this.view = 'list';
+    },
     money: Bank.money,
     date: Bank.date,
   },
@@ -361,7 +367,7 @@ const app = Vue.createApp({
       <section v-if="view === 'details' && details">
         <div class="toolbar">
           <h2>Договор {{ details.contract.number }} · {{ details.contract.clientName }}</h2>
-          <button id="btn-back" @click="view = 'list'">К списку</button>
+          <button id="btn-back" @click="toList">К списку</button>
         </div>
         <div class="card details">
           <div><div class="label">Вид кредита</div><div class="value">«{{ details.contract.productName }}»</div><div class="muted">{{ details.contract.kindTitle }}</div></div>

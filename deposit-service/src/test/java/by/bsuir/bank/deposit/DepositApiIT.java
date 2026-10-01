@@ -170,7 +170,7 @@ class DepositApiIT {
         mvc.perform(post("/api/internal/day-close").contentType(MediaType.APPLICATION_JSON).content("{\"date\": \"2026-10-11\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0]").value("2026-10-11: Д-000001 — начислены проценты 1.92 BYN"));
+                .andExpect(jsonPath("$[0]").value("11.10.2026: Д-000001 — начислены проценты 1.92 BYN"));
     }
 
     @Test

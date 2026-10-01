@@ -1,0 +1,11 @@
+$ ./mvnw -pl account-service,deposit-service -am verify
+
+Tests run:  7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.066 s -- in by.bsuir.bank.account.AccountNumbersTest
+Tests run:  6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.338 s -- in by.bsuir.bank.account.BankDayIT
+Tests run:  8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.349 s -- in by.bsuir.bank.account.LedgerServiceIT
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.064 s -- in by.bsuir.bank.deposit.InterestCalculatorTest
+Tests run:  7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  2.090 s -- in by.bsuir.bank.deposit.DepositFlowIT
+Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed:  0.565 s -- in by.bsuir.bank.deposit.DepositApiIT
+
+Tests run: 69, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS

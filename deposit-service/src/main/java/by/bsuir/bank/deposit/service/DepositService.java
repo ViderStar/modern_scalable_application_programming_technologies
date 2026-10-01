@@ -181,7 +181,7 @@ public class DepositService {
             post(key(number, "ACCRUE-" + date), number, date,
                     List.of(DepositPostings.accrual(fund(currency), contract.getInterestAccount(), delta)));
             contract.setAccrued(target);
-            events.add(date + ": " + number + " — начислены проценты " + delta + " " + currency);
+            events.add(RU_DATE.format(date) + ": " + number + " — начислены проценты " + delta + " " + currency);
         }
 
         int months = InterestCalculator.fullMonths(contract.getStartDate(), upTo);
@@ -190,12 +190,12 @@ public class DepositService {
             BigDecimal paid = payInterest(contract, date);
             contract.setPaidMonths(months);
             if (paid.signum() > 0) {
-                events.add(date + ": " + number + " — выплачены проценты " + paid + " " + currency);
+                events.add(RU_DATE.format(date) + ": " + number + " — выплачены проценты " + paid + " " + currency);
             }
         }
         if (matured) {
             close(contract, date);
-            events.add(date + ": " + number + " — срок договора истёк, вклад " + contract.getAmount() + " " + currency + " возвращён");
+            events.add(RU_DATE.format(date) + ": " + number + " — срок договора истёк, вклад " + contract.getAmount() + " " + currency + " возвращён");
         }
         return events;
     }

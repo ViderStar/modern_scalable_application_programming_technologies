@@ -1,0 +1,567 @@
+\documentclass[14pt,a4paper]{extarticle}
+\input{../../preamble}
+
+\begin{document}
+
+\makelabtitle{3}{Кредитные операции с физическими лицами}
+
+\tableofcontents
+
+\section{Цель работы}
+
+Реализовать микросервис кредитных операций с физическими лицами: справочник кредитных
+программ, форму заключения кредитного договора с контролем вводимых данных, открытие счетов
+клиента по плану счетов, график платежей для двух способов погашения, проводки по схеме
+<<Кредитная программа>> с использованием фонда развития банка и участие в процедуре
+<<Закрытие банковского дня>> вместе с депозитными программами предыдущей работы.
+
+\section{Задание}
+
+Вариант №\,4 --- банк <<Решение>>. Выбраны две кредитные программы для физических лиц
+(таблица~\ref{tab:products}); условия приближены к действующим предложениям банка.
+Банки Беларуси кредитуют физических лиц в белорусских рублях, поэтому обе программы
+рублёвые; справочник валют в форме договора при этом используется.
+
+\begin{table}[H]
+\caption{Кредитные программы банка <<Решение>>}
+\label{tab:products}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+ & <<R-деньги mix>> & <<R-Онлайн>> \\
+\midrule
+Способ погашения & ежемесячно равными аннуитетными платежами & ежемесячно проценты, вся сумма кредита в конце срока \\
+Ставка & 17,65\,\% годовых & 17,65\,\% годовых \\
+Сумма кредита & 500--50\,000 BYN & 300--15\,000 BYN \\
+Срок договора & 6--60 месяцев & 3--36 месяцев \\
+Счёт основной суммы & 2400 & 2400 \\
+Счёт процентов & 2470 & 2470 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Требования задания:
+\begin{enumerate}
+\item внести в справочник <<План счетов>> счета, необходимые для обслуживания кредитных
+линий;
+\item разработать форму заключения кредитного договора (вид кредита и валюта из
+справочников, номер договора, даты, срок, сумма, процент) с контролем корректности данных;
+\item при заключении договора создавать не менее двух счетов --- для основной суммы и
+для процентов по кредиту;
+\item использовать счёт фонда развития банка из предыдущей работы со стартовым
+капиталом 100~млрд белорусских рублей;
+\item сформировать график платежей;
+\item разработать процедуру <<Закрытие банковского дня>> и отчёт о состоянии счетов; при
+двух активных кредитных программах в нём должно быть не менее десяти счетов с учётом
+депозитных.
+\end{enumerate}
+
+\section{Проектирование}
+
+\subsection{Место сервиса кредитов в системе}
+
+Для кредитных операций добавлен четвёртый микросервис, \texttt{credit-service}
+(рисунок~\ref{fig:services}). Он устроен так же, как сервис депозитов: хранит программы и
+договоры в собственной базе, клиента запрашивает у модуля <<Клиенты>>, а счета и проводки
+ведёт через главную книгу. Код существующих сервисов при этом не меняется: главная книга
+открывает счета любого балансового кода и оповещает о новом банковском дне всех участников
+из списка, поэтому подключение кредитов сводится к двум строкам справочника <<План счетов>>
+и одной записи в настройке списка участников.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[lbl/.style={font=\scriptsize, text=black!80}]
+\node[svc] (cli) at (0, 5.0) {client-service\\[-1pt]{\footnotesize клиенты (ЛР1)}\\[-3pt]{\footnotesize порт 8081}};
+\node[svc] (dep) at (-5.4, 2.5) {deposit-service\\[-1pt]{\footnotesize вклады (ЛР2)}\\[-3pt]{\footnotesize порт 8083}};
+\node[svc, fill=codekw!18] (crd) at (5.4, 2.5) {credit-service\\[-1pt]{\footnotesize кредиты, графики, карты}\\[-3pt]{\footnotesize порт 8084}};
+\node[svc, minimum width=4.2cm] (acc) at (0, 0) {account-service\\[-1pt]{\footnotesize главная книга, банковский день}\\[-3pt]{\footnotesize порт 8082}};
+\draw[flow] (dep.north) |- node[lbl, above, pos=0.75] {клиент} (cli.west);
+\draw[flow] (crd.north) |- node[lbl, above, pos=0.75] {клиент} (cli.east);
+\draw[flow] ([xshift=-4mm]dep.south) |- node[lbl, below, pos=0.75] {счета, проводки} ([yshift=-2.5mm]acc.west);
+\draw[flow] ([xshift=4mm]crd.south) |- node[lbl, below, pos=0.75] {счета, проводки} ([yshift=-2.5mm]acc.east);
+\draw[flow, dashed] ([yshift=2.5mm]acc.west) -| node[lbl, above, pos=0.25] {новый день} ([xshift=4mm]dep.south);
+\draw[flow, dashed] ([yshift=2.5mm]acc.east) -| node[lbl, above, pos=0.25] {новый день} ([xshift=-4mm]crd.south);
+\end{tikzpicture}
+\caption{Сервис кредитов среди микросервисов банка}
+\label{fig:services}
+\end{figure}
+
+\subsection{План счетов}
+
+Для кредитных программ в план счетов добавлены два активных счёта
+(таблица~\ref{tab:chart}). В отличие от депозитных, оба счёта клиента активные: их остаток
+растёт по дебету и уменьшается по кредиту.
+
+\begin{table}[H]
+\caption{Счета плана счетов, используемые кредитными программами}
+\label{tab:chart}
+\centering
+\small
+\begin{tabularx}{\textwidth}{clXl}
+\toprule
+Код & Активность & Наименование & Назначение в работе \\
+\midrule
+1010 & активный & Денежные средства в кассе & касса банка \\
+2400 & активный & Кредиты физическим лицам & текущий (кредитный) счёт клиента \\
+2470 & активный & Начисленные процентные доходы по кредитам физическим лицам & счёт процентов по кредиту \\
+7327 & пассивный & Фонд развития банка & источник кредитных средств \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Схема данных}
+
+Схема базы сервиса кредитов приведена на рисунке~\ref{fig:er}. График платежей хранится
+построчно в таблице \texttt{payment\_item}: это позволяет отмечать оплату каждого платежа и
+показывать клиенту остаток долга. Таблица \texttt{card} относится к следующей работе ---
+к кредитному счёту выпускается карта для банкомата.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[entity, text width=4.6cm, anchor=north west] (product) at (0, 0) {\textbf{credit\_product}\nodepart{two} id \hfill PK\\ name, kind, currency\\ rate\\ min\_amount, max\_amount\\ min\_term\_months\\ max\_term\_months};
+\node[entity, text width=7.0cm, anchor=north west] (contract) at (6.7, 0) {\textbf{credit\_contract}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ product\_id \hfill FK\\ client\_id, client\_name \hfill $\to$ client-service\\ currency, amount, rate, term\_months\\ start\_date, end\_date, status\\ main\_account, interest\_account \hfill $\to$ account\\ principal\_paid, interest\_paid};
+\node[entity, text width=4.6cm, anchor=north west] (item) at (0, -4.6) {\textbf{payment\_item}\nodepart{two} id \hfill PK\\ contract\_id, seq \hfill FK, UQ\\ due\_date\\ principal, interest\\ balance\_after\\ paid\_on};
+\node[entity, text width=7.0cm, anchor=north west] (card) at (6.7, -5.2) {\textbf{card}\nodepart{two} id \hfill PK\\ number \hfill UQ\\ contract\_id \hfill FK, UQ\\ holder, pin\_hash\\ failed\_attempts, blocked};
+\draw[flow] (contract.west |- product.east) -- (product.east);
+\draw[flow] (item.east) -- ++(0.9, 0) |- ([yshift=-14mm]contract.west);
+\draw[flow] ([xshift=10mm]card.north) -- ([xshift=10mm]card.north |- contract.south);
+\end{tikzpicture}
+\caption{Схема данных сервиса кредитов}
+\label{fig:er}
+\end{figure}
+
+\subsection{Схема проводок}
+
+Проводки выполняются по упрощённой схеме <<Кредитная программа>> из задания
+(таблица~\ref{tab:postings}). Знак <<$+$>> означает увеличение остатка счёта, <<$-$>> ---
+уменьшение: фонд развития пассивный, остальные три счёта активные.
+
+\begin{table}[H]
+\caption{Проводки процесса <<Кредитная программа>>}
+\label{tab:postings}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{clcccccccc}
+\toprule
+ & & \multicolumn{2}{c}{Касса (А)} & \multicolumn{2}{c}{СФРБ (П)} & \multicolumn{2}{c}{Текущий счёт (А)} & \multicolumn{2}{c}{Проценты (А)} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+№ & Операция & Дт & Кт & Дт & Кт & Дт & Кт & Дт & Кт \\
+\midrule
+1 & Выделение кредита банком & & & $-$ & & $+$ & & & \\
+2 & Перевод кредита в кассу & $+$ & & & & & $-$ & & \\
+3 & Получение кредита через кассу & & $-$ & & & & & & \\
+\midrule
+4 & Внесение процентов в кассу & $+$ & & & & & & & \\
+5 & Перевод процентов из кассы & & $-$ & & & & & $+$ & \\
+6 & Начисление процентов банком & & & & $+$ & & & & $-$ \\
+\midrule
+7 & Внесение денег в кассу & $+$ & & & & & & & \\
+8 & Погашение долга за кредит из кассы & & $-$ & & & $+$ & & & \\
+9 & Окончание кредита & & & & $+$ & & $-$ & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Операция 1 выполняется при заключении договора. Операции 2--3 --- при получении денег
+клиентом: в кассе отделения либо в банкомате (лабораторная работа №\,4), причём частями.
+Остаток текущего счёта поэтому показывает, сколько кредитных средств клиент ещё может снять.
+Операции 4--6 проводятся в дату уплаты процентов, 7--9 --- в дату погашения основного долга;
+при аннуитетном погашении операция 9 возвращает в фонд очередную часть долга, а название
+<<Окончание кредита>> носит последняя из них.
+
+В задании операция <<Начисление процентов банком>> стоит перед внесением процентов в
+кассу. В реализации проценты сначала вносятся клиентом и только затем списываются банком с
+процентного счёта: итоговые обороты те же, но остаток счёта ни в какой момент не становится
+отрицательным, а главная книга отрицательных остатков не допускает.
+
+\subsection{Графики платежей}
+
+Месячная процентная ставка равна $i = r / (12 \cdot 100)$, где $r$~--- годовая ставка.
+
+\textbf{Аннуитет.} Ежемесячный платёж постоянен и равен
+\begin{equation}
+A = S \cdot \frac{i\,(1 + i)^n}{(1 + i)^n - 1},
+\label{eq:annuity}
+\end{equation}
+где $S$~--- сумма кредита, $n$~--- срок в месяцах. В платеже номер $k$ проценты начисляются
+на остаток долга $B_{k-1}$, остальное идёт в погашение:
+\begin{equation}
+I_k = \operatorname{round}(B_{k-1} \cdot i,\ 2), \qquad P_k = A - I_k, \qquad B_k = B_{k-1} - P_k .
+\end{equation}
+Последний платёж закрывает остаток целиком ($P_n = B_{n-1}$) и вбирает накопленную
+погрешность округления, поэтому сумма погашений всегда в точности равна сумме кредита.
+
+\textbf{Ежемесячная уплата процентов.} Долг не уменьшается до конца срока, поэтому каждый
+месяц уплачивается одна и та же сумма $I = \operatorname{round}(S \cdot i,\ 2)$, а последний
+платёж равен $S + I$.
+
+Для кредита 12\,000 BYN на 6 месяцев под 17,65\,\% годовых $i = 0{,}0147083$,
+$A = 2104{,}21$ BYN; график приведён в таблице~\ref{tab:schedule}. Тот же кредит с
+ежемесячной уплатой процентов потребовал бы шести платежей по 176,50 BYN и возврата
+12\,000 BYN в конце: переплата составила бы 1\,059,00 BYN против 625,27 BYN при аннуитете,
+поскольку долг всё время остаётся полным.
+
+\begin{table}[H]
+\caption{Аннуитетный график платежей: 12\,000 BYN, 6 месяцев, 17,65\,\% годовых}
+\label{tab:schedule}
+\centering
+\small
+\begin{tabular}{crrrr}
+\toprule
+№ & Основной долг & Проценты & Платёж & Остаток долга \\
+\midrule
+1 & 1\,927,71 & 176,50 & 2\,104,21 & 10\,072,29 \\
+2 & 1\,956,06 & 148,15 & 2\,104,21 & 8\,116,23 \\
+3 & 1\,984,83 & 119,38 & 2\,104,21 & 6\,131,40 \\
+4 & 2\,014,03 & 90,18 & 2\,104,21 & 4\,117,37 \\
+5 & 2\,043,65 & 60,56 & 2\,104,21 & 2\,073,72 \\
+6 & 2\,073,72 & 30,50 & 2\,104,22 & 0,00 \\
+\midrule
+Итого & 12\,000,00 & 625,27 & 12\,625,27 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Закрытие банковского дня}
+
+Процедура закрытия дня осталась прежней: главная книга объявляет участникам дату нового
+дня и сдвигает её после успешной обработки. Участников теперь два --- сервисы депозитов и
+кредитов. Сервис кредитов в ответ проводит все платежи графиков, срок которых наступил;
+по условию задания клиент платит без задержки. Ключ пакета проводок включает номер платежа
+(\texttt{CRD-К-000001-PAY-3}), поэтому повторная обработка дня не проведёт платёж дважды,
+а после простоя сервис проведёт сразу все пропущенные платежи. Когда оплачена последняя
+строка графика, договор закрывается.
+
+\subsection{REST-интерфейс}
+
+Операции сервиса кредитов приведены в таблице~\ref{tab:rest}.
+
+\begin{table}[H]
+\caption{REST-интерфейс сервиса кредитов}
+\label{tab:rest}
+\centering
+\footnotesize
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+Метод & Адрес & Назначение \\
+\midrule
+GET & \texttt{/api/products}, \texttt{/api/meta} & виды кредитов, валюты, банковский день, номер договора \\
+GET & \texttt{/api/clients} & список клиентов из модуля <<Клиенты>> \\
+POST & \texttt{/api/credits/schedule} & предварительный расчёт графика платежей \\
+POST & \texttt{/api/credits} & заключение договора; в ответе --- договор и PIN-конверт карты \\
+GET & \texttt{/api/credits}, \texttt{/api/credits/\{id\}} & договоры; договор с графиком, счетами и проводками \\
+POST & \texttt{/api/credits/\{id\}/cash} & выдача наличных с кредитного счёта через кассу \\
+POST & \texttt{/api/credits/\{id\}/pin} & перевыпуск PIN-кода карты \\
+POST & \texttt{/api/internal/day-close} & обработка нового банковского дня \\
+POST & \texttt{/api/atm/transactions} & транзакции банкомата (лабораторная работа №\,4) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Реализация}
+
+\subsection{Структура модуля}
+
+Структура модуля \texttt{credit-service} показана в листинге~\ref{lst:tree}.
+
+\listingcaption{Модуль \texttt{credit-service}}{lst:tree}
+\begin{Verbatim}[fontsize=\footnotesize, frame=single, rulecolor=\color{codeframe}]
+domain/        CreditProduct, CreditContract, PaymentItem, CreditKind, Card, CardNumbers
+repository/    репозитории Spring Data JPA
+dto/           CreditRequest, CreditView, ScheduleRow, ScheduleView, CreditIssued
+service/       CreditService       заключение договора, выдача, обработка дня
+               ScheduleCalculator  расчёт графиков платежей
+               CreditPostings      проводки по схеме задания
+               CardService         выпуск карты, PIN-код
+               DayCloseProcessor   участие в закрытии банковского дня
+atm/           банковская сторона протокола банкомата (ЛР4)
+web/           CreditController, ReferenceController, DayCloseController, AtmController
+resources/     schema.sql, data.sql (программы банка), static/ (web-клиент)
+\end{Verbatim}
+
+\subsection{Расчёт графика платежей}
+
+Расчёт вынесен в класс без состояния \texttt{ScheduleCalculator}
+(листинг~\ref{lst:schedule}) и используется дважды: для предварительного показа графика в
+форме и при заключении договора. Вычисления ведутся в \texttt{BigDecimal}; степень
+$(1 + i)^n$ считается с точностью 16 значащих цифр, денежные суммы округляются до копеек по
+правилу <<половина вверх>>.
+
+\begin{lstlisting}[style=java, caption={Аннуитетный график (\texttt{ScheduleCalculator})}, label={lst:schedule}]
+/** Аннуитетный платёж: A = S * i / (1 - (1 + i)^-n). */
+public static BigDecimal annuityPayment(BigDecimal amount, BigDecimal rate, int months) {
+    BigDecimal i = rate.divide(MONTHS_PERCENT, PRECISION);
+    if (i.signum() == 0) {
+        return amount.divide(BigDecimal.valueOf(months), 2, RoundingMode.HALF_UP);
+    }
+    BigDecimal growth = BigDecimal.ONE.add(i).pow(months, PRECISION);
+    return amount.multiply(i).multiply(growth)
+            .divide(growth.subtract(BigDecimal.ONE), 2, RoundingMode.HALF_UP);
+}
+
+private static List<ScheduleRow> annuity(BigDecimal amount, BigDecimal rate, int months, LocalDate start) {
+    BigDecimal payment = annuityPayment(amount, rate, months);
+    BigDecimal balance = amount;
+    List<ScheduleRow> rows = new ArrayList<>();
+    for (int k = 1; k <= months; k++) {
+        BigDecimal interest = monthlyInterest(balance, rate);
+        BigDecimal principal = k == months ? balance : payment.subtract(interest).min(balance);
+        balance = balance.subtract(principal);
+        rows.add(new ScheduleRow(k, start.plusMonths(k), principal, interest, balance));
+    }
+    return rows;
+}
+\end{lstlisting}
+
+\subsection{Заключение договора}
+
+При заключении договора сервис проверяет условия программы, открывает в главной книге
+счета 2400 и 2470 на имя клиента, выделяет кредит из фонда развития, сохраняет договор с
+графиком и выпускает карту (листинг~\ref{lst:open}). Если в фонде недостаточно средств,
+главная книга отклоняет проводку, и её сообщение доходит до формы.
+
+\begin{lstlisting}[style=java, caption={Счета, выделение кредита, график и карта (\texttt{CreditService.open})}, label={lst:open}]
+String main = ledger.open(new OpenAccount(MAIN_CHART_CODE, currency,
+        client.id().intValue(), client.fullName(), number)).number();
+String interest = ledger.open(new OpenAccount(INTEREST_CHART_CODE, currency,
+        client.id().intValue(), client.fullName(), number)).number();
+post(key(number, "ISSUE"), number, today, List.of(CreditPostings.issue(fund(currency), main, request.amount())));
+
+CreditContract contract = new CreditContract();
+...
+for (ScheduleRow row : ScheduleCalculator.build(product.getKind(), request.amount(), product.getRate(),
+        request.termMonths(), today)) {
+    PaymentItem item = new PaymentItem();
+    ...
+    contract.getSchedule().add(item);
+}
+contracts.saveAndFlush(contract);
+PinEnvelope card = cardService.issue(contract);
+return new CreditIssued(view(contract), card);
+\end{lstlisting}
+
+Проводки кредитной программы собраны в классе \texttt{CreditPostings}
+(листинг~\ref{lst:postings}); платёж по графику формирует до шести операций схемы, которые
+главная книга проводит одним атомарным пакетом.
+
+\begin{lstlisting}[style=java, caption={Проводки выдачи кредита и платежа по графику (\texttt{CreditPostings})}, label={lst:postings}]
+public static Posting issue(String fund, String main, BigDecimal amount) {
+    return Posting.of("Выделение кредита банком", Entry.debit(fund, amount), Entry.debit(main, amount));
+}
+
+public static List<Posting> payment(String cash, String fund, String main, String interestAccount,
+                                    BigDecimal interest, BigDecimal principal, boolean last) {
+    List<Posting> postings = new ArrayList<>();
+    if (interest.signum() > 0) {
+        postings.add(Posting.of("Внесение процентов в кассу", Entry.debit(cash, interest)));
+        postings.add(Posting.of("Перевод процентов из кассы", Entry.credit(cash, interest), Entry.debit(interestAccount, interest)));
+        postings.add(Posting.of("Начисление процентов банком", Entry.credit(interestAccount, interest), Entry.credit(fund, interest)));
+    }
+    if (principal.signum() > 0) {
+        postings.add(Posting.of("Внесение денег в кассу", Entry.debit(cash, principal)));
+        postings.add(Posting.of("Погашение долга за кредит из кассы", Entry.credit(cash, principal), Entry.debit(main, principal)));
+        postings.add(Posting.of(last ? "Окончание кредита" : "Возврат части кредита в фонд банка",
+                Entry.credit(main, principal), Entry.credit(fund, principal)));
+    }
+    return postings;
+}
+\end{lstlisting}
+
+\subsection{Контроль корректности данных договора}
+
+Форма договора проверяется дважды: в web-клиенте до отправки и в сервисе
+(таблица~\ref{tab:checks}).
+
+\begin{table}[H]
+\caption{Проверки формы кредитного договора}
+\label{tab:checks}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXc}
+\toprule
+Поле & Правило & Где проверяется \\
+\midrule
+Клиент & выбран; существует в модуле <<Клиенты>> & клиент, сервис \\
+Номер договора & формат \texttt{К-000001}; не занят & клиент, сервис \\
+Вид кредита & запись справочника; доступен в выбранной валюте & клиент, сервис \\
+Сумма & денежная; в пределах минимума и максимума программы & клиент, сервис \\
+Срок & целое число месяцев в пределах программы & клиент, сервис \\
+Процент & равен ставке программы & сервис \\
+Дата начала & равна текущему банковскому дню & сервис \\
+Дата окончания & равна дате начала плюс срок & сервис \\
+Средства банка & суммы достаточно в фонде развития & главная книга \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Обработка банковского дня}
+
+При открытии нового дня сервис проходит по графику каждого действующего договора и
+проводит неоплаченные платежи, срок которых наступил (листинг~\ref{lst:day}).
+
+\begin{lstlisting}[style=java, caption={Платежи по графику (\texttt{CreditService.processDay})}, label={lst:day}]
+for (PaymentItem item : contract.getSchedule()) {
+    if (item.isPaid() || item.getDueDate().isAfter(date)) {
+        continue;
+    }
+    boolean last = item.getSeq() == contract.getTermMonths();
+    post(key(number, "PAY-" + item.getSeq()), number, date, CreditPostings.payment(cash(currency), fund(currency),
+            contract.getMainAccount(), contract.getInterestAccount(), item.getInterest(), item.getPrincipal(), last));
+    item.setPaidOn(date);
+    contract.setInterestPaid(contract.getInterestPaid().add(item.getInterest()));
+    contract.setPrincipalPaid(contract.getPrincipalPaid().add(item.getPrincipal()));
+}
+if (contract.getSchedule().stream().allMatch(PaymentItem::isPaid)) {
+    contract.setStatus(ContractStatus.CLOSED);
+    contract.setClosedOn(date);
+}
+\end{lstlisting}
+
+\section{Тестирование}
+
+Сервис кредитов покрыт 73 тестами (таблица~\ref{tab:tests}). Как и в предыдущей работе,
+главная книга в тестах заменена двойником \texttt{InMemoryLedger} из тестовой части
+общей библиотеки, а REST-клиенты модулей <<Клиенты>> и <<Депозиты>> --- заглушками Mockito.
+
+\begin{table}[H]
+\caption{Тесты сервиса кредитов}
+\label{tab:tests}
+\centering
+\small
+\begin{tabularx}{\textwidth}{lcX}
+\toprule
+Класс тестов & Тестов & Что проверяется \\
+\midrule
+\texttt{ScheduleCalculatorTest} & 8 & формула аннуитета, оба графика, округление \\
+\texttt{CardNumbersTest} & 10 & номер карты, счётчик попыток PIN-кода \\
+\texttt{CreditFlowIT} & 7 & проводки по схеме, платежи, закрытие договора \\
+\texttt{CreditApiIT} & 23 & контроль данных договора, график, выдача через кассу \\
+\texttt{AtmProtocolIT} & 25 & протокол банкомата (лабораторная работа №\,4) \\
+\midrule
+Всего & 73 & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Тест первого платежа по аннуитетному кредиту сверяет обороты всех четырёх счетов с
+таблицей~\ref{tab:postings} (листинг~\ref{lst:test}); итог прогона приведён в
+листинге~\ref{lst:run}.
+
+\begin{lstlisting}[style=java, caption={Тест платежа по графику (\texttt{CreditFlowIT})}, label={lst:test}]
+@Test
+@DisplayName("Аннуитет: в дату платежа проводятся проценты и часть долга, остальные дни счета не меняются")
+void annuityPaymentOnDueDate() {
+    CreditView credit = open("К-000001", ANNUITY, "10000.00", 6).contract();
+    credits.cashOut(credit.id(), new BigDecimal("10000.00"));
+
+    assertThat(closeDays(30)).isEmpty();                                   // 31.10 — платежей ещё нет
+    List<String> events = closeDays(1);                                    // 01.11 — первый платёж
+    assertThat(events).containsExactly("01.11.2026: К-000001 — платёж №1: проценты 147.08, основной долг 1606.43 BYN");
+
+    // процентный счёт: дебет +147,08 (перевод из кассы) и кредит −147,08 (начисление банком)
+    assertTurnover(credit.interestAccount(), "147.08", "147.08", "0.00");
+    // текущий счёт: +10000 выдача, −10000 снятие, +1606,43 погашение из кассы, −1606,43 возврат в фонд
+    assertTurnover(credit.mainAccount(), "11606.43", "11606.43", "0.00");
+    // касса: транзит выданного кредита и принятого платежа 1753,51
+    assertTurnover(cash, "11753.51", "11753.51", "0.00");
+    // фонд: −10000 выдача, +147,08 проценты, +1606,43 возврат долга
+    assertThat(ledger.balance(fund)).isEqualByComparingTo(CAPITAL.subtract(new BigDecimal("8246.49")));
+}
+\end{lstlisting}
+
+\listingcaption{Результат выполнения тестов}{lst:run}
+\VerbatimInput[fontsize=\fontsize{7}{8.8}\selectfont, frame=single, rulecolor=\color{codeframe}, samepage=true]{listings/tests.txt}
+
+\section{Результаты работы}
+
+Сценарий демонстрации: в банке действуют два вклада из предыдущей работы; два клиента
+берут кредиты по разным программам; банк работает месяц. Фонд развития запущен со стартовым
+капиталом 100~млрд BYN.
+
+Контроль данных формы показан на рисунке~\ref{fig:errors}: сумма и срок выходят за
+пределы программы <<R-Онлайн>>. На рисунке~\ref{fig:form} --- корректно заполненная форма с
+предварительным расчётом графика: кнопка <<Рассчитать график>> запрашивает расчёт у сервиса,
+не создавая договор. Числа графика совпадают с таблицей~\ref{tab:schedule}.
+
+\screenshot{img/form_errors.png}{Контроль корректности данных кредитного договора}{fig:errors}
+
+\screenshot[0.95\textwidth]{img/form_schedule.png}{Форма кредитного договора с графиком платежей}{fig:form}
+
+После заключения договора открывается его карточка (рисунок~\ref{fig:open}). Кредит
+зачислен на текущий счёт 2400, к счёту выпущена карта; номер карты и PIN-код показаны в
+<<ПИН-конверте>> один раз --- в базе хранится только хеш PIN-кода.
+
+\screenshot[0.95\textwidth]{img/details_open.png}{Карточка кредитного договора после заключения}{fig:open}
+
+Первый клиент получил всю сумму через кассу, второй оставил деньги на счёте. Список
+договоров приведён на рисунке~\ref{fig:list}.
+
+\screenshot{img/list.png}{Список кредитных договоров}{fig:list}
+
+В отчёте по счетам (рисунок~\ref{fig:report-open}) десять счетов в белорусских рублях:
+касса, фонд развития, по два счёта на каждый из двух кредитных и двух депозитных договоров.
+Фонд развития равен $100\,000\,000\,000 + 15\,000 - 18\,000 = 99\,999\,997\,000$ BYN: он
+вырос на сумму вкладов и уменьшился на сумму выданных кредитов. На текущем счёте второго
+клиента остаётся 6\,000 BYN, у первого --- ноль: дебетовый оборот 12\,000 (выдача) равен
+кредитовому (снятие через кассу).
+
+\screenshot{img/report_open.png}{Отчёт по счетам: две кредитные и две депозитные программы}{fig:report-open}
+
+После 31 закрытия дня наступает дата первых платежей (рисунок~\ref{fig:report-month}).
+По аннуитетному кредиту уплачено 176,50 BYN процентов и 1\,927,71 BYN основного долга, по
+кредиту <<R-Онлайн>> --- только проценты $6000 \cdot 17{,}65 / 1200 = 88{,}25$ BYN. В том же
+протоколе видны операции сервиса депозитов: оба участника обработали один и тот же день.
+
+\screenshot{img/report_month.png}{Отчёт по счетам и протокол закрытия дня через месяц}{fig:report-month}
+
+Карточка аннуитетного кредита после первого платежа показана на
+рисунке~\ref{fig:details-month}: первая строка графика отмечена оплаченной, остаток долга
+уменьшился до 10\,072,29 BYN, в проводках видны все шесть операций платежа. В карточке
+кредита <<R-Онлайн>> (рисунок~\ref{fig:details-io}) основной долг не изменился.
+
+\screenshot[0.95\textwidth]{img/details_month.png}{Аннуитетный кредит после первого платежа}{fig:details-month}
+
+\screenshot[0.95\textwidth]{img/details_interest_only.png}{Кредит с ежемесячной уплатой процентов после первого платежа}{fig:details-io}
+
+\sectioncenter{Заключение}
+
+В работе реализован микросервис кредитных операций с двумя программами банка <<Решение>>:
+кредитом с аннуитетным погашением и кредитом с ежемесячной уплатой процентов и возвратом
+суммы в конце срока. При заключении договора сервис проверяет условия программы, открывает
+по плану счетов текущий и процентный счета клиента, выделяет кредит из фонда развития банка
+и формирует график платежей; платежи проводятся в дату их наступления при закрытии
+банковского дня проводками по схеме из задания.
+
+Работа показала, что принятое ранее разделение на сервисы оправдано: новая предметная
+область добавлена отдельным микросервисом без изменения кода клиентов, депозитов и главной
+книги. Общие правила учёта --- расчёт сальдо, запрет отрицательного остатка, атомарность и
+идемпотентность проводок --- реализованы один раз в главной книге и одинаково действуют для
+депозитов и кредитов, а отчёт о состоянии счетов объединяет счета обеих программ.
+
+Корректность расчётов и проводок подтверждена 73 автоматическими тестами.
+
+\sectioncenter{Список использованных источников}
+
+\begin{enumerate}
+\item Об установлении Плана счетов бухгалтерского учёта в банках и небанковских
+кредитно-финансовых организациях Республики Беларусь: постановление Правления Национального
+банка Республики Беларусь от 29.08.2013 №\,506 [Электронный ресурс]. --- Режим доступа:
+\url{https://www.nbrb.by/legislation/accountingreporting}. --- Дата доступа: 01.10.2026.
+\item Кредиты на потребительские нужды~/ ЗАО <<Банк <<Решение>> [Электронный ресурс]. ---
+Режим доступа: \url{https://rbank.by/life/credits/}. --- Дата доступа: 01.10.2026.
+\item Четыркин, Е.~М. Финансовая математика: учебник~/ Е.~М.~Четыркин. --- 10-е изд. ---
+М.: Дело, 2011. --- 392~с.
+\item Ньюмен, С. Создание микросервисов~/ С.~Ньюмен. --- 2-е изд. --- СПб.: Питер, 2023. ---
+624~с.
+\item Spring Data JPA Reference Documentation [Электронный ресурс]. --- Режим доступа:
+\url{https://docs.spring.io/spring-data/jpa/reference/}. --- Дата доступа: 01.10.2026.
+\end{enumerate}
+
+\appendixtitle{А}{Исходный код сервиса кредитов}
+
+\input{appendix}
+
+\end{document}

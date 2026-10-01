@@ -143,6 +143,11 @@ const app = Vue.createApp({
       await this.reload();
       if (this.view === 'details') await this.openDetails(this.details.contract.id);
     },
+    /* Возврат к списку: сообщения карточки договора больше не нужны. */
+    toList() {
+      this.notice = '';
+      this.view = 'list';
+    },
     money: Bank.money,
     date: Bank.date,
   },
@@ -282,7 +287,7 @@ const app = Vue.createApp({
           <div style="display: flex; gap: 8px">
             <button v-if="details.contract.status === 'ACTIVE' && details.contract.kind === 'REVOCABLE'"
                     id="btn-withdraw" class="danger" @click="withdraw">Отозвать вклад</button>
-            <button id="btn-back" @click="view = 'list'">К списку</button>
+            <button id="btn-back" @click="toList">К списку</button>
           </div>
         </div>
         <div class="card details">

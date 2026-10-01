@@ -13,6 +13,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
@@ -28,6 +29,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class BankDayService {
 
     private static final int MAX_DAYS = 3660;
+    private static final DateTimeFormatter RU_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final BankDayRepository days;
     private final BankProperties properties;
@@ -71,10 +73,10 @@ public class BankDayService {
             return notifier.dayOpened(participant.url(), date);
         } catch (ResourceAccessException e) {
             log.warn("Сервис «{}» недоступен, день {} обработан без него", participant.name(), date);
-            return List.of(date + ": сервис «" + participant.name() + "» недоступен, обработка отложена");
+            return List.of(RU_DATE.format(date) + ": сервис «" + participant.name() + "» недоступен, обработка отложена");
         } catch (RestClientException e) {
             throw new BankException(HttpStatus.BAD_GATEWAY, "DAY_CLOSE_FAILED",
-                    "Сервис «" + participant.name() + "» не обработал день " + date + ", день не закрыт");
+                    "Сервис «" + participant.name() + "» не обработал день " + RU_DATE.format(date) + ", день не закрыт");
         }
     }
 }

@@ -100,52 +100,116 @@
 \setlist[enumerate]{noitemsep, topsep=0pt, leftmargin=1.25cm}
 
 % Листинги кода и вывода программы
+\usepackage{xcolor}
+\definecolor{codekw}{HTML}{0B3D91}
+\definecolor{codecomment}{HTML}{5F6B7A}
+\definecolor{codestring}{HTML}{0F6B4F}
+\definecolor{codeframe}{HTML}{B8C0CC}
+\definecolor{codeback}{HTML}{FAFBFC}
+\definecolor{shotframe}{HTML}{C5CCD6}
+
 \usepackage{listings}
 \usepackage{fancyvrb}
+
+% Под XeTeX listings выводит символы Юникода вне очереди: <th>ФИО</th> превращается в <thФИО></th>.
+% Кириллица и типографские знаки объявляются «буквами», тогда порядок символов сохраняется.
+\ifPDFTeX\else
+\makeatletter
+\lst@InputCatcodes
+\def\lst@DefEC{%
+ \lst@CCECUse \lst@ProcessLetter
+  ^^80^^81^^82^^83^^84^^85^^86^^87^^88^^89^^8a^^8b^^8c^^8d^^8e^^8f%
+  ^^90^^91^^92^^93^^94^^95^^96^^97^^98^^99^^9a^^9b^^9c^^9d^^9e^^9f%
+  ^^a0^^a1^^a2^^a3^^a4^^a5^^a6^^a7^^a8^^a9^^aa^^ab^^ac^^ad^^ae^^af%
+  ^^b0^^b1^^b2^^b3^^b4^^b5^^b6^^b7^^b8^^b9^^ba^^bb^^bc^^bd^^be^^bf%
+  ^^c0^^c1^^c2^^c3^^c4^^c5^^c6^^c7^^c8^^c9^^ca^^cb^^cc^^cd^^ce^^cf%
+  ^^d0^^d1^^d2^^d3^^d4^^d5^^d6^^d7^^d8^^d9^^da^^db^^dc^^dd^^de^^df%
+  ^^e0^^e1^^e2^^e3^^e4^^e5^^e6^^e7^^e8^^e9^^ea^^eb^^ec^^ed^^ee^^ef%
+  ^^f0^^f1^^f2^^f3^^f4^^f5^^f6^^f7^^f8^^f9^^fa^^fb^^fc^^fd^^fe^^ff%
+  ^^^^0410^^^^0411^^^^0412^^^^0413^^^^0414^^^^0415^^^^0416^^^^0417%
+  ^^^^0418^^^^0419^^^^041a^^^^041b^^^^041c^^^^041d^^^^041e^^^^041f%
+  ^^^^0420^^^^0421^^^^0422^^^^0423^^^^0424^^^^0425^^^^0426^^^^0427%
+  ^^^^0428^^^^0429^^^^042a^^^^042b^^^^042c^^^^042d^^^^042e^^^^042f%
+  ^^^^0430^^^^0431^^^^0432^^^^0433^^^^0434^^^^0435^^^^0436^^^^0437%
+  ^^^^0438^^^^0439^^^^043a^^^^043b^^^^043c^^^^043d^^^^043e^^^^043f%
+  ^^^^0440^^^^0441^^^^0442^^^^0443^^^^0444^^^^0445^^^^0446^^^^0447%
+  ^^^^0448^^^^0449^^^^044a^^^^044b^^^^044c^^^^044d^^^^044e^^^^044f%
+  ^^^^0401^^^^0451^^^^2013^^^^2014^^^^2026^^^^2116^^^^2212^^^^25ba%
+  ^^^^25c4^^^^25cf%
+  ^^00}
+\lst@RestoreCatcodes
+\makeatother
+\fi
 \lstset{
   basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekw},
+  commentstyle=\color{codecomment}\itshape,
+  stringstyle=\color{codestring},
   frame=single,
+  rulecolor=\color{codeframe},
+  backgroundcolor=\color{codeback},
   breaklines=true,
+  breakatwhitespace=false,
   showstringspaces=false,
   inputencoding=utf8,
   extendedchars=true,
   columns=fullflexible,
   keepspaces=true,
-  captionpos=t
+  tabsize=4,
+  captionpos=t,
+  xleftmargin=2pt,
+  xrightmargin=2pt,
+  aboveskip=8pt,
+  belowskip=8pt
 }
-\ifPDFTeX
-\lstset{
-  literate={а}{{\cyra}}1 {б}{{\cyrb}}1 {в}{{\cyrv}}1 {г}{{\cyrg}}1
-           {д}{{\cyrd}}1 {е}{{\cyre}}1 {ж}{{\cyrzh}}1 {з}{{\cyrz}}1
-           {и}{{\cyri}}1 {й}{{\cyrishrt}}1 {к}{{\cyrk}}1 {л}{{\cyrl}}1
-           {м}{{\cyrm}}1 {н}{{\cyrn}}1 {о}{{\cyro}}1 {п}{{\cyrp}}1
-           {р}{{\cyrr}}1 {с}{{\cyrs}}1 {т}{{\cyrt}}1 {у}{{\cyru}}1
-           {ф}{{\cyrf}}1 {х}{{\cyrh}}1 {ц}{{\cyrc}}1 {ч}{{\cyrch}}1
-           {ш}{{\cyrsh}}1 {щ}{{\cyrshch}}1 {ъ}{{\cyrhrdsn}}1
-           {ы}{{\cyrery}}1 {ь}{{\cyrsftsn}}1 {э}{{\cyrerev}}1
-           {ю}{{\cyryu}}1 {я}{{\cyrya}}1 {ё}{{\cyryo}}1
-           {А}{{\CYRA}}1 {Б}{{\CYRB}}1 {В}{{\CYRV}}1 {Г}{{\CYRG}}1
-           {Д}{{\CYRD}}1 {Е}{{\CYRE}}1 {Ж}{{\CYRZH}}1 {З}{{\CYRZ}}1
-           {И}{{\CYRI}}1 {Й}{{\CYRISHRT}}1 {К}{{\CYRK}}1 {Л}{{\CYRL}}1
-           {М}{{\CYRM}}1 {Н}{{\CYRN}}1 {О}{{\CYRO}}1 {П}{{\CYRP}}1
-           {Р}{{\CYRR}}1 {С}{{\CYRS}}1 {Т}{{\CYRT}}1 {У}{{\CYRU}}1
-           {Ф}{{\CYRF}}1 {Х}{{\CYRH}}1 {Ц}{{\CYRC}}1 {Ч}{{\CYRCH}}1
-           {Ш}{{\CYRSH}}1 {Щ}{{\CYRSHCH}}1 {Ъ}{{\CYRHRDSN}}1
-           {Ы}{{\CYRERY}}1 {Ь}{{\CYRSFTSN}}1 {Э}{{\CYREREV}}1
-           {Ю}{{\CYRYU}}1 {Я}{{\CYRYA}}1 {Ё}{{\CYRYO}}1
-           {—}{{---}}1 {–}{{--}}1 {…}{{\ldots}}1
-}
-\fi
 
+% JavaScript и YAML в listings не предопределены
+\lstdefinelanguage{JavaScript}{
+  keywords={async, await, break, case, catch, class, const, continue, default, delete, do, else, export,
+            false, finally, for, function, if, import, in, instanceof, let, new, null, of, return, switch,
+            this, throw, true, try, typeof, undefined, var, void, while},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]"
+}
+\lstdefinelanguage{YAML}{
+  sensitive=true,
+  comment=[l]{\#},
+  morestring=[b]',
+  morestring=[b]"
+}
+\lstdefinelanguage{CSS}{
+  sensitive=true,
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]"
+}
 % Подписи листингов — в том же стиле, что таблицы: «Листинг X.Y — Название»
 \captionsetup[lstlisting]{labelsep=endash, justification=raggedright,
                           singlelinecheck=false, font={normalsize}}
 \renewcommand{\lstlistingname}{Листинг}
 \AtBeginDocument{\numberwithin{lstlisting}{section}}
 
-\lstdefinestyle{python}{language=Python, keywordstyle=\bfseries}
+\lstdefinestyle{java}{language=Java, morekeywords={record, var, sealed, permits, yield}}
+\lstdefinestyle{js}{language=JavaScript}
+\lstdefinestyle{sql}{language=SQL, morekeywords={identity, generated, references, bigint, boolean, text, if},
+                     deletekeywords={name, number, value, year, month, day, status, key, action, role, type}}
+\lstdefinestyle{yaml}{language=YAML}
+\lstdefinestyle{xml}{language=XML}
+\lstdefinestyle{css}{language=CSS}
+\lstdefinestyle{json}{language={}, stringstyle=\color{codestring}, morestring=[b]"}
+\lstdefinestyle{python}{language=Python}
 \lstdefinestyle{shell}{language=bash, keywordstyle=\mdseries}
 \lstdefinestyle{plain}{language={}, basicstyle=\ttfamily\scriptsize}
+
+% Полужирное выделение фрагмента листинга: @b@ ... @/b@
+\lstdefinestyle{marked}{moredelim=**[is][\bfseries]{@b@}{@/b@}}
+
+% Листинги приложения: полный текст файлов мелким кеглем
+\lstdefinestyle{appendix}{basicstyle=\ttfamily\fontsize{7.2}{8.8}\selectfont, frame=single,
+                          aboveskip=4pt, belowskip=10pt}
 
 % Абзац после листинга должен сохранять отступ 1,25 см (СТП 2.1.1)
 \makeatletter
@@ -157,6 +221,42 @@
 \newcommand{\listingcaption}[2]{%
   \captionof{lstlisting}{#1}\label{#2}%
   \setlength{\parindent}{1.25cm}%
+}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, shapes.multipart, fit, calc, automata, backgrounds}
+\tikzset{
+  >={Stealth[length=2.2mm]},
+  box/.style={draw=black!70, rounded corners=2pt, align=center, font=\small, inner sep=5pt, fill=white},
+  svc/.style={box, fill=codekw!6, minimum width=3.3cm, minimum height=1.1cm},
+  db/.style={cylinder, shape border rotate=90, aspect=0.22, draw=black!70, fill=codeback, align=center,
+             font=\footnotesize, minimum width=2.2cm, minimum height=1.0cm},
+  note/.style={font=\footnotesize, align=center, text=black!75},
+  entity/.style={rectangle split, rectangle split parts=2, draw=black!70, rounded corners=2pt, fill=white,
+                 font=\footnotesize, align=left, rectangle split part fill={codekw!10, white}},
+  flow/.style={->, draw=black!75, line width=0.5pt},
+}
+
+% Снимок экрана в тонкой рамке: \screenshot[ширина]{файл}{подпись}{метка}
+\newcommand{\screenshot}[4][\textwidth]{%
+  \begin{figure}[H]
+  \centering
+  {\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
+   \fcolorbox{shotframe}{white}{\includegraphics[width=\dimexpr#1-0.8pt\relax]{#2}}}
+  \caption{#3}
+  \label{#4}
+  \end{figure}
+}
+
+% Приложение: заголовок по центру, листинги нумеруются буквой приложения
+\newcommand{\appendixtitle}[2]{%
+  \newpage
+  \phantomsection
+  \addcontentsline{toc}{section}{Приложение #1 #2}
+  \begin{center}\textbf{ПРИЛОЖЕНИЕ #1}\\[2pt]\textbf{(обязательное)}\\[6pt]\textbf{#2}\end{center}
+  \vspace{8pt}
+  \setcounter{lstlisting}{0}
+  \renewcommand{\thelstlisting}{#1.\arabic{lstlisting}}
 }
 
 \usepackage{hyperref}
@@ -198,7 +298,7 @@
   по дисциплине
 
   \vspace{0.5em}
-  <<Информационные и технические средства защиты авторских прав>>
+  <<Современные технологии программирования масштабируемых приложений>>
 
   \vspace{0.5em}
   <<#2>>
@@ -213,67 +313,9 @@
 
   \vspace{0.6em}
   \textbf{Преподаватель:}\\
-  Ярмолик Вячеслав Николаевич\\
-  доктор технических наук\\
-  профессор кафедры ПОИТ
-  \end{minipage}
-  \end{flushright}
-
-  \vfill
-  \begin{center}Минск, 2026~г.\end{center}
-  \end{titlepage}
-}
-
-% Титульный лист реферата
-\newcommand{\makerefattitle}[1]{%
-  \begin{titlepage}
-  \thispagestyle{empty}
-  \begin{center}
-
-  МИНИСТЕРСТВО ОБРАЗОВАНИЯ РЕСПУБЛИКИ БЕЛАРУСЬ
-
-  \vspace{0.5em}
-  Учреждение образования
-
-  \vspace{0.5em}
-  \textbf{<<Белорусский государственный университет информатики и радиоэлектроники>>}
-
-  \vspace{2em}
-  Факультет компьютерных систем и сетей
-
-  \vspace{0.5em}
-  Кафедра программного обеспечения информационных технологий
-  \end{center}
-
-  \vspace{3em}
-  \begin{center}
-  \textbf{РЕФЕРАТ}
-
-  \vspace{0.5em}
-  по дисциплине
-
-  \vspace{0.5em}
-  <<Информационные и технические средства защиты авторских прав>>
-
-  \vspace{1.5em}
-  на тему
-
-  \vspace{0.5em}
-  \textbf{<<#1>>}
-  \end{center}
-
-  \vspace{5em}
-  \begin{flushright}
-  \begin{minipage}{0.5\textwidth}
-  \textbf{Выполнил:}\\
-  Лебедевич Артем Владимирович\\
-  магистрант группы 556301
-
-  \vspace{0.6em}
-  \textbf{Преподаватель:}\\
-  Ярмолик Вячеслав Николаевич\\
-  доктор технических наук\\
-  профессор кафедры ПОИТ
+  Хмелёва Ангелина Владимировна\\
+  кандидат технических наук\\
+  доцент кафедры ПОИТ
   \end{minipage}
   \end{flushright}
 

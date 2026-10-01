@@ -204,13 +204,13 @@ public class CreditService {
             item.setPaidOn(date);
             contract.setInterestPaid(contract.getInterestPaid().add(item.getInterest()));
             contract.setPrincipalPaid(contract.getPrincipalPaid().add(item.getPrincipal()));
-            events.add(date + ": " + number + " — платёж №" + item.getSeq() + ": проценты " + item.getInterest()
+            events.add(RU_DATE.format(date) + ": " + number + " — платёж №" + item.getSeq() + ": проценты " + item.getInterest()
                     + ", основной долг " + item.getPrincipal() + " " + currency);
         }
         if (contract.getSchedule().stream().allMatch(PaymentItem::isPaid)) {
             contract.setStatus(ContractStatus.CLOSED);
             contract.setClosedOn(date);
-            events.add(date + ": " + number + " — кредит погашен, договор закрыт");
+            events.add(RU_DATE.format(date) + ": " + number + " — кредит погашен, договор закрыт");
         }
         return events;
     }
